@@ -1,0 +1,13 @@
+# Test-only dependencies (installed by the release workflow when present).
+#
+# SQLAlchemy is a RUNTIME dependency of architecture_app.store, but it is not
+# listed in aw-app.json's runtime.pip_requires: this is a Tier-1 in-process
+# app, so it runs inside the workspace process, which already has SQLAlchemy
+# (core's own src/api/db.py is built on it). Listing it there would be
+# misleading twice over — the app doesn't get its own environment, and core
+# does not install an app's pip_requires anyway.
+#
+# CI is a different environment: the tests import store.py to inspect the ORM
+# metadata (that's how they catch a table name that lost its prefix), so the
+# package has to be here or collection fails before a single check runs.
+sqlalchemy>=2.0
