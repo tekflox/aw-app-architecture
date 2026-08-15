@@ -24,8 +24,10 @@ and the first request surfaces it.
 from __future__ import annotations
 
 import logging
+import os
 
 from . import routes as routes_mod
+from . import self_register
 from . import store
 
 log = logging.getLogger("aw_apps.architecture")
@@ -45,6 +47,14 @@ class ArchitectureAppPlugin:
             )
 
         ctx.routes.register(routes_mod.build_routes())
+
+        # Discoverable by aw-mcp-gateway's app-scan — see self_register.py for
+        # why the manifest's contributes.mcp block is NOT what registers the
+        # upstream (it's the marketplace's "what you get" list). Without this
+        # the app is green everywhere and the 40 tools reach no agent.
+        port = int(os.environ.get("AW_PORT", "9030"))
+        self_register.register_self(ctx.package_dir, port)
+
         log.info("architecture activated: routes mounted at /api/apps/architecture")
 
     async def deactivate(self) -> None:

@@ -256,3 +256,23 @@ class TestMcpSurface:
         dispatch = source[source.index("def _dispatch("):]
         for name in self._declared_tool_names():
             assert f'tool == "{name}"' in dispatch, f"{name} is advertised but not dispatched"
+
+
+class TestGatewaySelfRegistration:
+    def test_plugin_registers_itself_with_the_gateway(self):
+        """contributes.mcp.provides is the marketplace's "what you get" list —
+        it does NOT create a gateway upstream. That only happens when the app
+        writes <package_dir>/mcp.json, which the gateway's app-scan reads. Miss
+        it and the app installs green, doctor finds no degradation, /mcp answers
+        by hand, and no agent is offered a single tool."""
+        source = open(os.path.join(REPO, "architecture_app", "plugin.py")).read()
+        assert "self_register.register_self(" in source
+
+    def test_registered_name_matches_the_app_id(self):
+        """The gateway prefixes tools with the upstream name (aw__<name>__*);
+        a mismatch with the app id makes every tool answer to a name nothing
+        else in the workspace uses."""
+        from architecture_app import self_register
+
+        with open(os.path.join(REPO, "aw-app.json")) as f:
+            assert self_register.MCP_SERVER_NAME == json.load(f)["id"]
