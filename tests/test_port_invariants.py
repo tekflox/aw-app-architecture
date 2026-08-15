@@ -130,8 +130,10 @@ class TestManifest:
         don't exist here, which is why it never worked."""
         with open(os.path.join(REPO, "aw-app.json")) as f:
             manifest = json.load(f)
-        task = manifest["contributes"]["tasks"][0]
-        assert task["name"] == "Architecture Test Discovery"
+        # By name, not by position: the seeding framework identifies a
+        # contributed task by its name, and this file now ships two.
+        task = next(t for t in manifest["contributes"]["tasks"]
+                    if t["name"] == "Architecture Test Discovery")
         assert ".venv/aw" not in task["command"]
         assert "src.libs" not in task["command"]
         assert task["command"].startswith("aw-workspace-cli architecture")
@@ -354,7 +356,8 @@ class TestSeededTaskShape:
 
     def _task(self):
         with open(os.path.join(REPO, "aw-app.json")) as f:
-            return json.load(f)["contributes"]["tasks"][0]
+            return next(t for t in json.load(f)["contributes"]["tasks"]
+                        if t["name"] == "Architecture Test Discovery")
 
     def test_command_targets_this_workspace(self):
         cmd = self._task()["command"]
@@ -417,3 +420,87 @@ class TestCoreVersionGuard:
         store.bind(Ctx())
         assert store._ctx is not None
         monkeypatch.setattr(store, "_ctx", None)   # don't leak into other tests
+
+
+class TestProvenance:
+    """`edited_by` existed from the monolith and nothing ever read it. It is now
+    the rule that lets a scan run every night without erasing what people
+    write: a scan write only overwrites a row still marked 'scan'."""
+
+    def test_scan_write_is_conditional(self):
+        source = open(os.path.join(REPO, "architecture_app", "store.py")).read()
+        upsert = source[source.index("def upsert_component("):source.index("_COMPONENT_FIELDS")]
+        assert "where=(Component.edited_by == SCAN_PROVENANCE)" in upsert
+        assert "if edited_by == SCAN_PROVENANCE else None" in upsert
+
+    def test_curated_write_stays_unconditional(self):
+        """An agent or a person must still be able to correct any row,
+        including one the scan owns."""
+        from architecture_app import store
+        assert store.SCAN_PROVENANCE == "scan"
+        source = open(os.path.join(REPO, "architecture_app", "store.py")).read()
+        # the MCP tools' default provenance is NOT the scan's
+        assert 'edited_by: str = "generated"' in source
+
+    def test_list_components_projects_edited_by(self):
+        """scan.py reads this to decide what to leave alone; if the projection
+        drops it, every curated row silently becomes overwritable again."""
+        source = open(os.path.join(REPO, "architecture_app", "store.py")).read()
+        listing = source[source.index("def list_components("):source.index("def create_requirement(")]
+        assert "Component.edited_by" in listing
+
+
+class TestScanIsDeterministic:
+    """The scan's whole claim is that it states only what a manifest states.
+    The moment it starts inferring, its output stops being trustworthy and the
+    catalog becomes something nobody can check."""
+
+    def test_writes_everything_as_scan_owned(self):
+        source = open(os.path.join(REPO, "architecture_app", "scan.py")).read()
+        assert "edited_by=db.SCAN_PROVENANCE" in source
+
+    def test_core_subpackages_are_an_explicit_list(self):
+        """Not `os.listdir('src')` — `tests` is not a component, and a catalog
+        built from directory names is one nobody trusts."""
+        from architecture_app import scan
+        slugs = {s for s, *_ in scan._CORE_SUBPACKAGES}
+        assert "tests" not in slugs
+        assert {"apps-runtime", "workspace-cli", "workspace-api"} <= slugs
+
+    def test_no_llm_or_network_in_the_scan(self):
+        source = open(os.path.join(REPO, "architecture_app", "scan.py")).read()
+        for forbidden in ("httpx", "requests", "urllib", "openai", "anthropic"):
+            assert forbidden not in source, f"scan.py reaches for {forbidden}"
+
+    def test_tier_maps_without_guessing(self):
+        from architecture_app import scan
+        assert scan._TIER_LAYER["inprocess"] == "app"
+        assert scan._TIER_LAYER["container"] == "app-container"
+
+    def test_connection_targets_exist_as_components(self):
+        """Every derived edge points at a slug the scan itself creates —
+        otherwise create_connection raises for a component that isn't there."""
+        from architecture_app import scan
+        infra = {c["slug"] for c in scan._INFRA}
+        assert {"postgres", "mcp-gateway"} <= infra
+
+
+class TestScanTaskShape:
+    def _tasks(self):
+        with open(os.path.join(REPO, "aw-app.json")) as f:
+            return {t["name"]: t for t in json.load(f)["contributes"]["tasks"]}
+
+    def test_both_scans_are_seeded(self):
+        names = self._tasks()
+        assert "Architecture Workspace Scan" in names
+        assert "Architecture Test Discovery" in names
+
+    def test_scan_runs_less_often_than_discovery(self):
+        """A manifest changes when an app is installed or updated — rare. Test
+        files change all day. Same cadence for both would be pure noise."""
+        t = self._tasks()
+        assert t["Architecture Workspace Scan"]["schedules"][0]["kind"] == "daily"
+        assert t["Architecture Test Discovery"]["schedules"][0]["expr"] == "*/30 * * * *"
+
+    def test_scan_task_names_an_agent(self):
+        assert self._tasks()["Architecture Workspace Scan"]["agent_slug"]

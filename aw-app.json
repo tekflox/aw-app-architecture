@@ -3,7 +3,7 @@
   "id": "architecture",
   "name": "Architecture",
   "version": "0.5.1",
-  "description": "The Architecture namespace as a decoupled app: a structured catalog of components, BDD requirements, test traceability, bug history, technical debt, typed connections and exposed MCP tools \u2014 with health always DERIVED (a row can't claim \"implemented\" while a linked test fails or a bug is open). Merges the monolith's two disconnected surfaces (Settings > Architecture and Workspace > Tests) into one window, ships the ~41 MCP tools the catalog is managed through, and runs the test-discovery scan that keeps the traceability matrix populated without hand-registering every test file.",
+  "description": "The Architecture namespace as a decoupled app: a structured catalog of components, BDD requirements, test traceability, bug history, technical debt, typed connections and exposed MCP tools — with health always DERIVED (a row can't claim \"implemented\" while a linked test fails or a bug is open). Merges the monolith's two disconnected surfaces (Settings > Architecture and Workspace > Tests) into one window, ships the ~41 MCP tools the catalog is managed through, and runs the test-discovery scan that keeps the traceability matrix populated without hand-registering every test file.",
   "tier": "inprocess",
   "requires_ui_refresh": true,
   "publisher": "TekFlox",
@@ -72,6 +72,7 @@
         "create_mcp_tool",
         "delete_mcp_tool",
         "run_component_tests",
+        "scan_workspace",
         "run_test_discovery",
         "sync_component",
         "regenerate_architecture_docs"
@@ -93,6 +94,23 @@
     },
     "tasks": [
       {
+        "name": "Architecture Workspace Scan",
+        "type": "agentic_output",
+        "command": "aw-workspace-cli architecture scan",
+        "notify_exit_codes": [
+          1
+        ],
+        "agent_slug": "system-analyst",
+        "prompt": "`aw-workspace-cli architecture scan` just exited non-zero. The scan derives the component catalog from every repos/aw-app-*/aw-app.json, so a failure means it could not read the workspace's own manifests — the catalog is now stale rather than wrong. Read the output above, say which manifest broke it and whether the file is malformed or missing, and stop there. Do not change anything.",
+        "schedules": [
+          {
+            "kind": "daily",
+            "time": "05:00"
+          }
+        ],
+        "enabled": true
+      },
+      {
         "name": "Architecture Test Discovery",
         "type": "agentic_output",
         "command": "aw-workspace-cli architecture discover",
@@ -100,7 +118,7 @@
           1
         ],
         "agent_slug": "system-analyst",
-        "prompt": "`aw-workspace-cli architecture discover` just exited non-zero. That means at least one component's `test_base_path` points at a directory that no longer exists \u2014 the scan ran, but that component's tests silently stopped being discovered, so its traceability matrix is now stale rather than empty. Read the output above, name which components are affected and what the paths were, and say whether the directory moved (the path needs updating via update_component) or the component is gone (the row needs deleting). Do not change anything.",
+        "prompt": "`aw-workspace-cli architecture discover` just exited non-zero. That means at least one component's `test_base_path` points at a directory that no longer exists — the scan ran, but that component's tests silently stopped being discovered, so its traceability matrix is now stale rather than empty. Read the output above, name which components are affected and what the paths were, and say whether the directory moved (the path needs updating via update_component) or the component is gone (the row needs deleting). Do not change anything.",
         "schedules": [
           {
             "kind": "cron",

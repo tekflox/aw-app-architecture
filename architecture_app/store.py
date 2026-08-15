@@ -59,6 +59,12 @@ _log = logging.getLogger(__name__)
 
 TABLE_PREFIX = "app__architecture__"
 
+#: ``Component.edited_by`` value that marks a row as machine-derived and
+#: therefore still safe for the scan to overwrite. Any other value means a
+#: person or an agent has taken ownership of that row — see
+#: ``upsert_component``.
+SCAN_PROVENANCE = "scan"
+
 #: Every table/VIEW this module owns, in the order ``execute_multi`` needs them
 #: declared. Kept next to the models so adding a model without registering it
 #: here fails loudly at bootstrap instead of silently skipping its migrations.
@@ -476,7 +482,27 @@ def upsert_component(
     test_base_path: str | None = None,
     edited_by: str = "generated",
 ) -> dict:
-    """Create or update a component by its stable slug (idempotent)."""
+    """Create or update a component by its stable slug (idempotent).
+
+    **Provenance.** ``edited_by`` is not decoration — it decides whether this
+    write is allowed to overwrite what's already there:
+
+    * ``edited_by="scan"`` — a machine-derived write (see ``scan.py``). It
+      only updates a row that is *still* ``'scan'``. The moment anything else
+      touches that component, the scan stops overwriting it, forever.
+    * anything else (``'generated'`` — the MCP tools' default — or an explicit
+      ``'curated'``) — a deliberate write by an agent or a person. Overwrites,
+      and stamps the row so the scan backs off.
+
+    Without that rule a scan on a schedule silently erases every description
+    anyone writes, once per tick. The column existed from the start and nothing
+    read it; ``upsert_testcase`` had already learned the same lesson on the
+    other side of the schema, where it refuses to clobber ``run_command`` /
+    ``is_flaky`` / ``last_run_status`` on a rescan.
+
+    A refused update is a no-op, not an error: the scan re-running against a
+    fully curated catalog should be silent, not noisy.
+    """
     with get_session() as s:
         parent_id = _resolve_parent_id(s, parent_slug)
         stmt = pg_insert(Component).values(
@@ -501,6 +527,10 @@ def upsert_component(
                 edited_by=stmt.excluded.edited_by,
                 updated_at=func.now(),
             ),
+            # Only present for a scan write — a curated write has no condition
+            # and overwrites as before.
+            where=(Component.edited_by == SCAN_PROVENANCE)
+            if edited_by == SCAN_PROVENANCE else None,
         )
         s.execute(stmt)
         s.commit()
@@ -615,6 +645,11 @@ def list_components(repo: str | None = None, layer: str | None = None) -> list[d
         select(
             Component.slug, Component.name, Component.repo, Component.layer,
             Component.technologies, parent.slug.label("parent_slug"),
+            # Provenance is projected because callers need to act on it, not
+            # merely display it: the scan reads this to know which rows a
+            # person has taken over, and skips them (see scan.py). It was a
+            # write-only column until then.
+            Component.edited_by,
             VComponentHealth.health,
         )
         .outerjoin(parent, parent.id == Component.parent_id)

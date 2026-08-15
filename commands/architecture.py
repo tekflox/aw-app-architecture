@@ -18,7 +18,8 @@ the task sat disabled. Going through the CLI (which goes through the API,
 which reaches the process holding the session) is what makes it actually run.
 
 Usage:
-    aw-workspace-cli architecture discover            # scan every component
+    aw-workspace-cli architecture scan                # derive components from manifests
+    aw-workspace-cli architecture discover            # find test files per component
     aw-workspace-cli architecture components          # list, with derived health
     aw-workspace-cli architecture tests [<slug>]      # traceability rows
     aw-workspace-cli architecture run <file_path>     # run one testcase
@@ -48,6 +49,22 @@ def run(args: list[str] | None = None) -> int:
     from src.cli import local_client
 
     sub, rest = args[0], args[1:]
+
+    if sub == "scan":
+        status, body = local_client.request("POST", f"{_BASE}/scan/run", {})
+        if status != 200:
+            print(f"scan failed: HTTP {status} {body}", file=sys.stderr)
+            return 1
+        print(f"components {body.get('components')}  "
+              f"connections {body.get('connections')}  "
+              f"mcp tools {body.get('mcp_tools')}")
+        skipped = body.get("skipped_curated") or 0
+        if skipped:
+            # Not a warning — this is the provenance rule working. Reported
+            # because a scan that silently declines to write half the catalog
+            # would otherwise look like a scan that found nothing.
+            print(f"{skipped} component(s) left alone (curated — scan does not overwrite)")
+        return 0
 
     if sub == "discover":
         status, body = local_client.request("POST", f"{_BASE}/discovery/run", {})

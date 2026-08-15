@@ -45,6 +45,7 @@ from starlette.concurrency import run_in_threadpool
 from . import discovery
 from . import md_export as md
 from . import mcp_tools
+from . import scan
 from . import store as db
 from .test_runner import run_testcase
 
@@ -130,6 +131,12 @@ def build_routes(config: dict | None = None) -> FastAPI:
         # Filesystem walk across every component's test_base_path — same work
         # as the scheduled task, just off the request thread.
         return await run_in_threadpool(discovery.discover_all)
+
+    @app.post("/scan/run")
+    async def run_scan_route():
+        # Reads every aw-app.json in repos/ — filesystem + JSON only, no
+        # network, no LLM. Off the request thread because it walks the tree.
+        return await run_in_threadpool(scan.scan_workspace)
 
     @app.post("/docs/regenerate")
     async def regenerate_docs():

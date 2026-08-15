@@ -24,6 +24,7 @@ import json
 import logging
 
 from . import discovery
+from . import scan
 from . import md_export as md
 from . import store as db
 from .test_runner import run_testcase
@@ -218,6 +219,9 @@ TOOLS = [
     {"name": "run_component_tests",
      "description": "Run every test case linked to a component (subprocess pytest per file_path), record each result via update_testcase_result, then return the component's newly-derived health. Closes the loop into the health view.",
      "inputSchema": {"type": "object", "properties": {"slug": _STR}, "required": ["slug"]}},
+    {"name": "scan_workspace",
+     "description": "Derive the component catalog from the workspace's own aw-app.json manifests: one component per installed app, its connections (db / routes / gateway / declared app dependencies), its MCP tool rows, and its tests/ dir as test_base_path — plus aw-workspace and its src/ subpackages. Deterministic, no inference. Rows are written with edited_by='scan' and a component anyone has since edited is skipped, so this is safe to re-run on a schedule.",
+     "inputSchema": {"type": "object", "properties": {}}},
     {"name": "run_test_discovery",
      "description": "Scan component test_base_path(s) for test files and upsert Testcase rows (component-owned, never clobbers run_command/is_flaky/last_run_status on already-known tests). Omit slug to scan every component with a test_base_path set. This is what the periodic 'Architecture Test Discovery' scheduled task calls.",
      "inputSchema": {"type": "object", "properties": {"slug": _STR}}},
@@ -267,7 +271,7 @@ _WRITE_TOOLS = {
     "link_requirement_kanban", "unlink_requirement_kanban",
     "create_testcase", "update_testcase_result", "link_requirement_test",
     "unlink_requirement_test", "delete_testcase", "mark_testcase_flaky",
-    "set_testcase_run_command", "run_test_discovery",
+    "set_testcase_run_command", "run_test_discovery", "scan_workspace",
     "report_bug", "resolve_bug",
     "create_debt_note", "resolve_debt_note",
     "create_connection", "delete_connection", "create_mcp_tool", "delete_mcp_tool",
@@ -373,6 +377,8 @@ def _dispatch(tool: str, a: dict) -> dict:
     # ---- execute ----
     if tool == "run_component_tests":
         return _run_component_tests(a["slug"])
+    if tool == "scan_workspace":
+        return _ok(scan.scan_workspace())
     if tool == "run_test_discovery":
         slug = a.get("slug")
         result = [discovery.discover_component_tests(slug)] if slug else discovery.discover_all()
