@@ -1,0 +1,13 @@
+{
+  "name": "architecture-app-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Frontend for aw-app-architecture — the merged Components + Tests window. `npm run build` produces ui/dist/architecture.js, the bundle aw-app.json's contributes.frontend.bundle points at.",
+  "scripts": {
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0"
+  }
+}

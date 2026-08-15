@@ -1,0 +1,206 @@
+"""Tests for the things the port could plausibly have broken.
+
+These are deliberately not a re-test of the monolith's data-access logic — that
+code came across unchanged and its behaviour is the same. What changed is the
+*names* (the `app__architecture__` prefix the `db:own-tables` capability
+enforces) and the *plumbing* (session from `ctx.db`, KB trigger dropped, paths
+resolved against the workspace instead of one repo). A rename that misses one
+table is the failure mode here: `ensure_schema` would still create seven tables
+and the eighth would silently land unprefixed, which the runtime would refuse —
+at boot, in a log nobody reads.
+
+No Postgres needed: the ORM metadata and the DDL strings are inspected
+statically, and the one behavioural test fakes the store.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import sys
+
+import pytest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from architecture_app import store  # noqa: E402
+
+PREFIX = "app__architecture__"
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+class TestTableNaming:
+    def test_every_model_table_is_prefixed(self):
+        """The capability facade rejects any name without the prefix, so an
+        unprefixed model can never be created — it just fails at bootstrap."""
+        for name in store.Base.metadata.tables:
+            assert name.startswith(PREFIX), f"{name} would be refused by db:own-tables"
+
+    def test_every_view_is_prefixed(self):
+        for name in store.ViewBase.metadata.tables:
+            assert name.startswith(PREFIX)
+
+    def test_owned_covers_every_model_and_view(self):
+        """`OWNED` is what `execute_multi` validates the DDL against. A model
+        missing from it means its migrations silently never run."""
+        declared = set(store.Base.metadata.tables) | set(store.ViewBase.metadata.tables)
+        assert declared == set(store.OWNED), (
+            f"OWNED is out of sync: missing={declared - set(store.OWNED)}, "
+            f"stale={set(store.OWNED) - declared}"
+        )
+
+    def test_foreign_keys_point_at_prefixed_tables(self):
+        for table in store.Base.metadata.tables.values():
+            for fk in table.foreign_keys:
+                assert fk.target_fullname.startswith(PREFIX), (
+                    f"{table.name}: FK -> {fk.target_fullname} lost its prefix"
+                )
+
+    def test_index_names_are_prefixed(self):
+        """Two apps' tables live in the SAME workspace schema now, so an index
+        called `idx_component_parent` is a collision waiting to happen — the
+        table prefix doesn't cover index names."""
+        for table in store.Base.metadata.tables.values():
+            for index in table.indexes:
+                assert index.name.startswith(PREFIX), f"{index.name} is not namespaced"
+
+
+class TestRawDDL:
+    def test_every_ddl_table_reference_is_a_placeholder(self):
+        """`execute_multi` substitutes `{table:<name>}` and refuses to run a
+        statement with an unresolved placeholder left in it. A bare table name
+        would instead resolve against the search_path — quietly hitting
+        whatever `component` means to that session."""
+        for block in (store._MIGRATIONS, store._VIEWS):
+            for placeholder in re.findall(r"\{table:([^}]+)\}", block):
+                assert placeholder in store.OWNED, f"{placeholder} not in OWNED"
+
+    def test_no_bare_table_names_survive_in_ddl(self):
+        bare = set()
+        for block in (store._MIGRATIONS, store._VIEWS):
+            stripped = re.sub(r"\{table:[^}]+\}", "", block)
+            for name in store.OWNED:
+                short = name[len(PREFIX):]
+                if re.search(r"(?<![\w.]){}(?![\w])".format(re.escape(short)), stripped):
+                    bare.add(short)
+        assert not bare, f"unprefixed table reference(s) left in raw DDL: {sorted(bare)}"
+
+    def test_statements_split_cleanly(self):
+        """`text()` binds one statement at a time, unlike the monolith's raw
+        DBAPI cursor — so the blocks have to survive a semicolon split."""
+        for block in (store._MIGRATIONS, store._VIEWS):
+            stmts = store._split_statements(block)
+            assert stmts
+            for s in stmts:
+                assert ";" not in s
+
+    def test_component_health_view_is_created_after_the_one_it_reads(self):
+        """v_component_health SELECTs from v_requirement_health. Split into
+        separate statements, creation order stops being incidental."""
+        stmts = store._split_statements(store._VIEWS)
+        order = [i for i, s in enumerate(stmts) if "CREATE OR REPLACE VIEW" in s]
+        req = next(i for i in order if "v_requirement_health}" in stmts[i].split(" AS")[0])
+        comp = next(i for i in order if "v_component_health}" in stmts[i].split(" AS")[0])
+        assert req < comp
+
+
+class TestUnboundStoreFailsLoudly:
+    def test_get_session_without_bind_raises(self, monkeypatch):
+        """A store that fell back to some other engine would write real rows to
+        the wrong database and report success — the exact silent degradation
+        this workspace keeps getting bitten by."""
+        monkeypatch.setattr(store, "_ctx", None)
+        with pytest.raises(RuntimeError, match="not bound"):
+            store.get_session()
+
+
+class TestManifest:
+    def test_declares_the_capabilities_the_code_actually_uses(self):
+        with open(os.path.join(REPO, "aw-app.json")) as f:
+            manifest = json.load(f)
+        perms = set(manifest["permissions"])
+        assert "db:own-tables" in perms   # store.py
+        assert "routes:register" in perms  # plugin.py
+        assert "ui:code" in perms          # contributes.frontend
+        assert "tasks:contribute" in perms  # contributes.tasks
+
+    def test_seeded_task_does_not_point_at_the_monolith(self):
+        """The ported-as-is task ran `.venv/aw/bin/python -m
+        src.libs.architecture_discovery` — an interpreter and a module that
+        don't exist here, which is why it never worked."""
+        with open(os.path.join(REPO, "aw-app.json")) as f:
+            manifest = json.load(f)
+        task = manifest["contributes"]["tasks"][0]
+        assert task["name"] == "Architecture Test Discovery"
+        assert ".venv/aw" not in task["command"]
+        assert "src.libs" not in task["command"]
+        assert task["command"].startswith("aw-workspace-cli architecture")
+
+    def test_seeded_task_is_disabled(self):
+        """A schedule that starts firing on install is a surprise."""
+        with open(os.path.join(REPO, "aw-app.json")) as f:
+            manifest = json.load(f)
+        assert manifest["contributes"]["tasks"][0]["enabled"] is False
+
+
+class TestDiscoveryPaths:
+    def test_workspace_root_is_read_per_call(self, monkeypatch):
+        """Captured at import, the root would freeze to whichever of the CLI /
+        server / container cwds imported the module first."""
+        from architecture_app import discovery
+
+        monkeypatch.setenv("AW_WORKSPACE_CONTAINER_DIR", "/somewhere/else")
+        assert discovery.workspace_root() == "/somewhere/else"
+
+    def test_scan_returns_workspace_relative_paths(self, tmp_path, monkeypatch):
+        from architecture_app import discovery
+
+        (tmp_path / "repos" / "some-app" / "tests").mkdir(parents=True)
+        (tmp_path / "repos" / "some-app" / "tests" / "test_thing.py").write_text("")
+        (tmp_path / "repos" / "some-app" / "tests" / "helper.py").write_text("")
+        monkeypatch.setenv("AW_WORKSPACE_CONTAINER_DIR", str(tmp_path))
+
+        found = discovery._scan_dir(str(tmp_path / "repos" / "some-app"))
+        assert found == ["repos/some-app/tests/test_thing.py"]
+
+    def test_scan_reaches_across_repos(self, tmp_path, monkeypatch):
+        """The point of re-rooting: one scan covers components living in
+        different repos, which the monolith's single-checkout BASE_DIR
+        couldn't express."""
+        from architecture_app import discovery
+
+        for repo in ("aw-workspace", "aw-app-tasks"):
+            d = tmp_path / "repos" / repo / "tests"
+            d.mkdir(parents=True)
+            (d / "test_x.py").write_text("")
+        monkeypatch.setenv("AW_WORKSPACE_CONTAINER_DIR", str(tmp_path))
+
+        found = discovery._scan_dir(str(tmp_path / "repos"))
+        assert found == [
+            "repos/aw-app-tasks/tests/test_x.py",
+            "repos/aw-workspace/tests/test_x.py",
+        ]
+
+    def test_kind_inference_unchanged(self):
+        from architecture_app import discovery
+
+        assert discovery._infer_kind("src/tests/unit/test_a.py") == "unit"
+        assert discovery._infer_kind("src/tests/integration/test_a.py") == "integration"
+        assert discovery._infer_kind("ui/e2e/test_a.py") == "e2e"
+
+
+class TestNoCoreImports:
+    """A decoupled app that imports core modules is coupled again — and the
+    specific import the monolith used (`src.api.pg_db`) would give it a session
+    onto a database the capability system never granted it."""
+
+    @pytest.mark.parametrize("module", [
+        "store.py", "discovery.py", "test_runner.py", "md_export.py",
+        "mcp_tools.py", "routes.py", "plugin.py",
+    ])
+    def test_no_src_imports(self, module):
+        path = os.path.join(REPO, "architecture_app", module)
+        with open(path) as f:
+            source = f.read()
+        offenders = re.findall(r"^\s*(?:from|import)\s+src[\s.]", source, re.M)
+        assert not offenders, f"{module} imports core: {offenders}"

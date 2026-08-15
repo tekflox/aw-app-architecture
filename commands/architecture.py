@@ -1,0 +1,118 @@
+"""aw-workspace-cli architecture — this app's own CLI command.
+
+Auto-discovered by aw-workspace-cli from this app's installed directory
+(``<apps_root>/architecture/commands/``, since this file lives at
+``commands/`` in this repo's root — see aw-workspace's ``src/cli/discovery.py``).
+
+Everything here is a thin client over ``/api/apps/architecture/*``, using the
+workspace API key ``src.cli.local_client`` already knows how to present. The
+work itself has to happen in the workspace process: the store's session comes
+from ``ctx.db``, which exists only there, so a CLI that tried to scan or run
+tests in its own process would have no database to write to.
+
+This is also what the seeded "Architecture Test Discovery" task runs. The
+monolith's version of that task shelled straight into
+``.venv/aw/bin/python -m src.libs.architecture_discovery``; ported as-is it
+pointed at an interpreter and a module that don't exist in this workspace, so
+the task sat disabled. Going through the CLI (which goes through the API,
+which reaches the process holding the session) is what makes it actually run.
+
+Usage:
+    aw-workspace-cli architecture discover            # scan every component
+    aw-workspace-cli architecture components          # list, with derived health
+    aw-workspace-cli architecture tests [<slug>]      # traceability rows
+    aw-workspace-cli architecture run <file_path>     # run one testcase
+    aw-workspace-cli architecture regenerate-docs     # rewrite docs/architecture/
+"""
+from __future__ import annotations
+
+import json
+import sys
+
+COMMAND = "architecture"
+DESCRIPTION = "Architecture namespace — components, tests, discovery, docs"
+
+_BASE = "/api/apps/architecture"
+
+
+def _usage() -> int:
+    print(__doc__.split("Usage:")[1].strip())
+    return 2
+
+
+def run(args: list[str] | None = None) -> int:
+    args = list(args or [])
+    if not args or args[0] in ("-h", "--help"):
+        return _usage()
+
+    from src.cli import local_client
+
+    sub, rest = args[0], args[1:]
+
+    if sub == "discover":
+        status, body = local_client.request("POST", f"{_BASE}/discovery/run", {})
+        if status != 200:
+            print(f"discovery failed: HTTP {status} {body}", file=sys.stderr)
+            return 1
+        total = sum(len(r.get("found", [])) for r in body)
+        errored = 0
+        for r in body:
+            if r.get("error"):
+                errored += 1
+                print(f"  {r['component_slug']}: ERROR — {r['error']}")
+            elif not r.get("skipped_no_path"):
+                print(f"  {r['component_slug']} ({r.get('scanned_path')}): "
+                      f"{len(r.get('found', []))} test file(s)")
+        print(f"Architecture test discovery: {len(body)} component(s) scanned, "
+              f"{total} test file(s) total.")
+        # Non-zero when a component's test_base_path points somewhere that no
+        # longer exists — that's the condition the seeded task's
+        # notify_exit_codes watches for. A scan that finds nothing because
+        # nothing is registered yet is NOT an error.
+        return 1 if errored else 0
+
+    if sub == "components":
+        status, body = local_client.request("GET", f"{_BASE}/components")
+        if status != 200:
+            print(f"HTTP {status} {body}", file=sys.stderr)
+            return 1
+        for c in body:
+            print(f"{c.get('health', 'unknown'):<16} {c['slug']:<32} "
+                  f"{c.get('repo') or '—'}")
+        return 0
+
+    if sub == "tests":
+        path = f"{_BASE}/component-tests"
+        if rest:
+            path += f"?component_slug={rest[0]}"
+        status, body = local_client.request("GET", path)
+        if status != 200:
+            print(f"HTTP {status} {body}", file=sys.stderr)
+            return 1
+        print(json.dumps(body, indent=2, default=str))
+        return 0
+
+    if sub == "run":
+        if not rest:
+            print("run needs a file_path", file=sys.stderr)
+            return 2
+        status, body = local_client.request(
+            "POST", f"{_BASE}/testcases/run", {"file_path": rest[0]})
+        if status != 200:
+            print(f"HTTP {status} {body}", file=sys.stderr)
+            return 1
+        print(f"{body.get('status')}  {body.get('file_path')}")
+        if body.get("output"):
+            print(body["output"])
+        return 0 if body.get("status") == "passing" else 1
+
+    if sub == "regenerate-docs":
+        status, body = local_client.request("POST", f"{_BASE}/docs/regenerate", {})
+        if status != 200:
+            print(f"HTTP {status} {body}", file=sys.stderr)
+            return 1
+        print(f"changed={body.get('changed')} pruned={body.get('pruned')}")
+        return 0
+
+    print(f"unknown subcommand: {sub}", file=sys.stderr)
+    return _usage()

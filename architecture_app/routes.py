@@ -1,0 +1,148 @@
+"""architecture_app's mode-agnostic FastAPI sub-app (ADR Decision 2/6).
+
+``build_routes()`` returns the SAME sub-app object used in both modes:
+
+* **integrated** — ``plugin.py`` hands it to ``ctx.routes.register(...)``,
+  which mounts it at ``/api/apps/architecture`` behind the runtime's
+  ``IdentityGuard``. Apps never implement their own auth in this mode.
+* **standalone** — ``__main__.py`` mounts it at the same prefix itself.
+
+Every path here is RELATIVE (no ``/api/apps/architecture`` prefix) so client
+code uses one path shape in both modes.
+
+Ported from the monolith's ``src/api/routes/architecture.py``. Reads are the
+same data the MCP tools serve — the UI is a view onto the catalog, not a
+second source of truth, and curation writes (renaming/describing/linking) stay
+on the MCP where they're LLM-managed.
+
+Two deliberate exceptions, both inherited from the monolith and both still
+right here:
+
+* ``testcases/run`` — an execution action with a deterministic, objective
+  outcome (pytest passed or it didn't), the same category as the MCP's
+  ``run_component_tests``, not a curated edit. Fine to trigger from the play
+  button.
+* ``discovery/run`` — reads the filesystem and upserts Testcase rows, never
+  clobbering curated fields. The exact operation the scheduled task runs, just
+  triggerable on demand from the Rescan button instead of waiting for a tick.
+
+**What's new in the port.** The monolith exposed six routes because its UI was
+two disconnected panels reading a slice each. The merged window needs the rest
+of the namespace to be reachable too (requirements, bugs, debt, connections,
+the component tree), so the read surface is widened to cover what the tabs
+show. ``/mcp`` is also new: the MCP moved from a stdio subprocess to this
+in-process sub-app, because the store's session comes from ``ctx.db`` and a
+subprocess has no route to it (see ``mcp_tools``).
+"""
+from __future__ import annotations
+
+import logging
+
+from fastapi import FastAPI, HTTPException, Request
+from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
+
+from . import discovery
+from . import md_export as md
+from . import mcp_tools
+from . import store as db
+from .test_runner import run_testcase
+
+log = logging.getLogger("aw_apps.architecture")
+
+
+class _RunTestcaseBody(BaseModel):
+    file_path: str
+
+
+def build_routes() -> FastAPI:
+    """Mode-agnostic factory — called exactly once per mode."""
+    app = FastAPI(title="architecture")
+
+    # ---- catalog reads ----------------------------------------------------
+
+    @app.get("/components")
+    async def list_components(repo: str | None = None, layer: str | None = None):
+        return await run_in_threadpool(db.list_components, repo, layer)
+
+    @app.get("/components/{slug}")
+    async def get_component(slug: str):
+        c = await run_in_threadpool(db.full_component, slug)
+        if not c:
+            raise HTTPException(status_code=404, detail=f"component '{slug}' not found")
+        return c
+
+    @app.get("/matrix")
+    async def get_matrix(component_slug: str | None = None):
+        return await run_in_threadpool(db.get_traceability_matrix, component_slug)
+
+    @app.get("/component-tests")
+    async def get_component_tests(component_slug: str | None = None):
+        return await run_in_threadpool(db.list_component_tests, component_slug)
+
+    @app.get("/components/{slug}/requirements")
+    async def get_component_requirements(slug: str):
+        return await run_in_threadpool(db.get_component_requirements, slug)
+
+    @app.get("/components/{slug}/connections")
+    async def get_component_connections(slug: str):
+        return await run_in_threadpool(db.get_component_connections, slug)
+
+    @app.get("/requirements/{req_id}/bugs")
+    async def get_requirement_bugs(req_id: str):
+        return await run_in_threadpool(db.get_requirement_bug_history, req_id)
+
+    @app.get("/requirements/{req_id}/impact")
+    async def get_requirement_impact(req_id: str):
+        return await run_in_threadpool(db.get_requirement_impact, req_id)
+
+    @app.get("/debt")
+    async def list_debt(component_slug: str | None = None, open_only: bool = True):
+        return await run_in_threadpool(db.list_debt_notes, component_slug, open_only)
+
+    @app.get("/flaky")
+    async def list_flaky():
+        return await run_in_threadpool(db.list_flaky_testcases)
+
+    # ---- execute ----------------------------------------------------------
+
+    @app.post("/testcases/run")
+    async def run_testcase_route(body: _RunTestcaseBody):
+        # Runs a real pytest subprocess (up to 300s) — must not block the
+        # shared workspace event loop for everyone else while it runs.
+        #
+        # NOTE: the tunnel edge cuts requests at ~30s, so a slow suite will
+        # look like "502 workspace offline" to a browser coming in over the
+        # tunnel even though the run completes server-side and records its
+        # result. The Tests view treats a failed fetch as "unknown, refresh
+        # to see the recorded status" rather than as a test failure.
+        return await run_in_threadpool(run_testcase, body.file_path)
+
+    @app.post("/discovery/run")
+    async def run_discovery_route():
+        # Filesystem walk across every component's test_base_path — same work
+        # as the scheduled task, just off the request thread.
+        return await run_in_threadpool(discovery.discover_all)
+
+    @app.post("/docs/regenerate")
+    async def regenerate_docs():
+        return await run_in_threadpool(md.regenerate_all)
+
+    # ---- MCP (in-process, aggregated by aw-mcp-gateway) -------------------
+
+    @app.post("/mcp")
+    async def mcp(request: Request):
+        body = await request.json()
+        response = await run_in_threadpool(mcp_tools.handle_request, body)
+        # A JSON-RPC notification (e.g. notifications/initialized) has no
+        # response; 204 rather than a null body, which some clients reject.
+        if response is None:
+            from fastapi import Response
+            return Response(status_code=204)
+        return response
+
+    @app.get("/healthz")
+    async def healthz():
+        return {"ok": True, "app": "architecture"}
+
+    return app

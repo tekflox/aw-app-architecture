@@ -1,0 +1,83 @@
+{
+  "manifest_version": 1,
+  "id": "architecture",
+  "name": "Architecture",
+  "version": "0.1.0",
+  "description": "The Architecture namespace as a decoupled app: a structured catalog of components, BDD requirements, test traceability, bug history, technical debt, typed connections and exposed MCP tools — with health always DERIVED (a row can't claim \"implemented\" while a linked test fails or a bug is open). Merges the monolith's two disconnected surfaces (Settings > Architecture and Workspace > Tests) into one window, ships the ~41 MCP tools the catalog is managed through, and runs the test-discovery scan that keeps the traceability matrix populated without hand-registering every test file.",
+  "tier": "inprocess",
+  "requires_ui_refresh": true,
+  "publisher": "TekFlox",
+  "category": "Workspace",
+  "resource_estimate": {
+    "cpu": "low",
+    "memory": "low",
+    "disk": "low"
+  },
+  "runtime": {
+    "python": ">=3.11",
+    "entrypoint": "architecture_app.plugin:ArchitectureAppPlugin",
+    "pip_requires": []
+  },
+  "permissions": [
+    "db:own-tables",
+    "routes:register",
+    "tasks:contribute",
+    "ui:code",
+    "ui:slots:core.nav"
+  ],
+  "contributes": {
+    "routes": [
+      {
+        "prefix": "/api/apps/architecture"
+      }
+    ],
+    "frontend": {
+      "mode": "component",
+      "bundle": "ui/dist/architecture.js"
+    },
+    "tasks": [
+      {
+        "name": "Architecture Test Discovery",
+        "type": "agentic_output",
+        "command": "aw-workspace-cli architecture discover",
+        "notify_exit_codes": [1],
+        "schedules": [
+          {
+            "kind": "daily",
+            "time": "04:30"
+          }
+        ],
+        "enabled": false
+      }
+    ]
+  },
+  "config_schema": {
+    "type": "object",
+    "properties": {
+      "testcase_timeout_seconds": {
+        "type": "integer",
+        "default": 300,
+        "description": "Hard timeout for a single testcase run. Note the tunnel edge cuts browser requests at ~30s, so a run above that completes server-side but the play button will report it as unknown until the view refreshes."
+      }
+    },
+    "required": []
+  },
+  "config_visible": true,
+  "dependencies": {
+    "apps": [
+      {
+        "id": "tasks",
+        "version": ">=0.1.0",
+        "required": false,
+        "reason": "Provides the contributes.tasks surface that seeds the Architecture Test Discovery schedule. Non-required: the declaration is held and replayed when a provider appears, so the app installs and the scan stays triggerable from the UI's Rescan button and the run_test_discovery MCP tool without it."
+      },
+      {
+        "id": "mcp-gateway",
+        "version": ">=0.1.0",
+        "required": false,
+        "reason": "Aggregates this app's in-process /mcp endpoint as aw__architecture__* so agents can manage the catalog. Non-required: the REST surface and the window work standalone; without the gateway the tools simply aren't offered to agents."
+      }
+    ]
+  },
+  "migrations": {}
+}
