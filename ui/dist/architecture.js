@@ -208,7 +208,7 @@ function j(e) {
       /* @__PURE__ */ e.h("span", { className: "text-[13px]" }, "Architecture")
     );
   }
-  e.registerWindow(L, I), e.registerSlot("core.nav", W);
+  e.registerWindow(L, I), e.registerSlot("core.nav.workspace", W);
 }
 export {
   j as default,

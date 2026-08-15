@@ -23,12 +23,22 @@
     "routes:register",
     "tasks:contribute",
     "ui:code",
-    "ui:slots:core.nav"
+    "ui:slots:core.nav.workspace"
   ],
   "contributes": {
     "routes": [
       {
         "prefix": "/api/apps/architecture"
+      }
+    ],
+    "windows": [
+      {
+        "id": "architecture.main",
+        "title": "Architecture",
+        "icon": "layers",
+        "body": {
+          "type": "component"
+        }
       }
     ],
     "frontend": {

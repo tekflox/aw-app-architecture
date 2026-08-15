@@ -1,6 +1,6 @@
 // Integrated-mode entrypoint — dynamic-imported by aw-workspace-ui's
 // loadComponentPlugin() once this app is installed with "ui:code" +
-// "ui:slots:core.nav" granted. Built by `npm run build` -> ui/dist/
+// "ui:slots:core.nav.workspace" granted. Built by `npm run build` -> ui/dist/
 // architecture.js, referenced from aw-app.json's contributes.frontend.bundle.
 // Same register(host)/JSX-factory pattern as aw-app-presentations — every
 // component is declared INSIDE register(host), closing over `host`, so JSX
@@ -497,7 +497,13 @@ export function register(host) {
   }
 
   host.registerWindow(WINDOW_ID, ArchitectureWindow);
-  host.registerSlot('core.nav', ArchitectureNavEntry);
+  // core.nav.workspace — the Workspace popover, which is exactly where the
+  // old "Tests" row lived. Putting Architecture there means the entry the user
+  // reaches for is in the place muscle memory already points at, and the
+  // manifest's contributes.windows entry is what makes __awOpenAppWindow
+  // resolve architecture.main at all (without it the button opens nothing —
+  // the window body slot has nothing registered to mount into).
+  host.registerSlot('core.nav.workspace', ArchitectureNavEntry);
 }
 
 export default register;
