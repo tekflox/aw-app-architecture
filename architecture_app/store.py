@@ -84,7 +84,26 @@ def bind(ctx) -> None:
     rather than silently falling back to some other engine — a store that
     quietly wrote to the wrong database is exactly the class of silent
     degradation this workspace keeps getting bitten by.
+
+    Also checks up front that this workspace's ``ctx.db`` actually has the two
+    methods this app was built against. They landed in aw-workspace on
+    2026-08-15 (``session()`` and ``execute_multi()`` in ``src/apps/
+    db_tables.py``), and an ``aw-app.json`` has no way to declare a minimum
+    core version — ``dependencies`` only covers other apps. So on an older
+    workspace (a rollback, or a BYOD box on a stale image) the app installs
+    fine and then dies with ``AttributeError: 'DbFacade' object has no
+    attribute 'session'`` somewhere deep in a request. Naming the requirement
+    here turns that into one legible line in the activation log.
     """
+    db = getattr(ctx, "db", None)
+    missing = [m for m in ("session", "execute_multi") if not callable(getattr(db, m, None))]
+    if missing:
+        raise RuntimeError(
+            f"this workspace's ctx.db is missing {', '.join(missing)} — "
+            f"aw-app-architecture needs the multi-table db facade added to "
+            f"aw-workspace on 2026-08-15 (src/apps/db_tables.py). Update the "
+            f"workspace, or install an older version of this app."
+        )
     global _ctx
     _ctx = ctx
 

@@ -381,3 +381,39 @@ class TestSeededTaskShape:
         source = open(os.path.join(REPO, "commands", "architecture.py")).read()
         assert 'COMMAND = "architecture"' in source
         assert 'sub == "discover"' in source
+
+
+class TestCoreVersionGuard:
+    """`aw-app.json`'s `dependencies` only expresses other APPS — there is no
+    field for "needs aw-workspace >= X". This app genuinely does: ctx.db.session
+    and ctx.db.execute_multi landed on 2026-08-15. Without a guard, an older
+    workspace installs the app happily and then throws AttributeError from
+    inside a request, which reads as an app bug rather than a version mismatch.
+    """
+
+    def test_bind_rejects_a_facade_without_the_methods(self):
+        from architecture_app import store
+
+        class OldFacade:            # what ctx.db looked like before 2026-08-15
+            def create(self, *a): ...
+            def execute(self, *a): ...
+
+        class OldCtx:
+            db = OldFacade()
+
+        with pytest.raises(RuntimeError, match="execute_multi"):
+            store.bind(OldCtx())
+
+    def test_bind_accepts_a_current_facade(self, monkeypatch):
+        from architecture_app import store
+
+        class Facade:
+            def session(self, metadata=None): ...
+            def execute_multi(self, sql, names, params=None): ...
+
+        class Ctx:
+            db = Facade()
+
+        store.bind(Ctx())
+        assert store._ctx is not None
+        monkeypatch.setattr(store, "_ctx", None)   # don't leak into other tests
