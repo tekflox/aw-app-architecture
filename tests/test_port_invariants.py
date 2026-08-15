@@ -276,3 +276,44 @@ class TestGatewaySelfRegistration:
 
         with open(os.path.join(REPO, "aw-app.json")) as f:
             assert self_register.MCP_SERVER_NAME == json.load(f)["id"]
+
+
+class TestBundleOnlyUsesClassesCoreShips:
+    """An app bundle is loaded into the SPA at runtime, but the SPA's CSS was
+    compiled from its OWN source — Tailwind only emitted the arbitrary-value
+    utilities it saw there. A class this bundle invents resolves to no rule at
+    all, and the failure is silent: `w-[240px] shrink-0` on the rail produced
+    no width, so flex split the window ~50/50 and it read as a layout bug.
+
+    This test can't see core's stylesheet (different repo, built separately),
+    so it enforces the rule that makes the question moot: sizing lives in
+    inline styles, and the only arbitrary-value classes allowed here are the
+    CSS-variable colours, which core uses on nearly every element.
+    """
+
+    ALLOWED_ARBITRARY = re.compile(r"^\[var\(--[a-z-]+\)\]$")
+
+    def test_no_invented_arbitrary_utilities(self):
+        source = open(os.path.join(REPO, "ui", "src", "plugin.jsx")).read()
+        # Only look at real className strings, not the header comment.
+        offenders = set()
+        for class_attr in re.findall(r'className="([^"]+)"', source):
+            for cls in class_attr.split():
+                m = re.search(r"\[[^\]]+\]", cls)
+                if not m:
+                    continue
+                arg = m.group(0)
+                # colour variables are fine; so is an opacity like bg-white/[0.06]
+                if self.ALLOWED_ARBITRARY.match(arg) or re.match(r"^\[0?\.\d+\]$", arg):
+                    continue
+                offenders.add(cls)
+        assert not offenders, (
+            f"these classes may not exist in core's compiled CSS and would "
+            f"silently do nothing — use an inline style instead: {sorted(offenders)}"
+        )
+
+    def test_rail_width_is_a_real_style(self):
+        """The specific regression: the rail must carry a width no stylesheet
+        has to provide."""
+        source = open(os.path.join(REPO, "ui", "src", "plugin.jsx")).read()
+        assert "width: RAIL_WIDTH" in source

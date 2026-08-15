@@ -1,6 +1,7 @@
 const D = "architecture", B = "architecture.main";
 const s = {
   title: 14,
+  nav: 13,
   tab: 12,
   row: 11.5,
   mono: 11,
@@ -348,7 +349,7 @@ function j(e) {
         title: "Components, requirements, test traceability"
       },
       /* @__PURE__ */ e.h($, null),
-      /* @__PURE__ */ e.h("span", { className: "text-[13px] text-[var(--color-text-primary)]" }, "Architecture")
+      /* @__PURE__ */ e.h("span", { style: { fontSize: s.nav, color: "var(--color-text-primary)" } }, "Architecture")
     );
   }
   e.registerWindow(B, W), e.registerSlot("core.nav.workspace", q);

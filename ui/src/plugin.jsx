@@ -598,7 +598,10 @@ export function register(host) {
         title="Components, requirements, test traceability"
       >
         <ArchitectureIcon />
-        <span className="text-[13px] text-[var(--color-text-primary)]">Architecture</span>
+        {/* Core's own rows write this as `text-[13px]`, and that class does
+            exist in the compiled CSS today — but only because core happens to
+            use it. Inline keeps this row's size independent of that. */}
+        <span style={{ fontSize: FS.nav, color: 'var(--color-text-primary)' }}>Architecture</span>
       </button>
     );
   }
