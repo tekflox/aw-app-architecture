@@ -2,7 +2,7 @@
   "manifest_version": 1,
   "id": "architecture",
   "name": "Architecture",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "The Architecture namespace as a decoupled app: a structured catalog of components, BDD requirements, test traceability, bug history, technical debt, typed connections and exposed MCP tools \u2014 with health always DERIVED (a row can't claim \"implemented\" while a linked test fails or a bug is open). Merges the monolith's two disconnected surfaces (Settings > Architecture and Workspace > Tests) into one window, ships the ~41 MCP tools the catalog is managed through, and runs the test-discovery scan that keeps the traceability matrix populated without hand-registering every test file.",
   "tier": "inprocess",
   "requires_ui_refresh": true,
