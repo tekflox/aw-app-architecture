@@ -142,6 +142,22 @@ class TestManifest:
             manifest = json.load(f)
         assert manifest["contributes"]["tasks"][0]["enabled"] is False
 
+    def test_agentic_output_task_names_an_agent(self):
+        """Core's manifest validator requires `agent_slug` on `agentic_output`,
+        not only on `agent_prompt` — the tasks app's runner bails with "no
+        agent_slug configured" BEFORE running the command, so a task without one
+        is seeded looking healthy and then never runs. (The app template's
+        docs/contributing-tasks.md still documents this as agent_prompt-only;
+        the validator is the authority.) Install refuses the manifest outright,
+        which is how this was caught."""
+        with open(os.path.join(REPO, "aw-app.json")) as f:
+            manifest = json.load(f)
+        for task in manifest["contributes"]["tasks"]:
+            if task["type"] in ("agentic_output", "agent_prompt"):
+                assert task.get("agent_slug", "").strip(), (
+                    f"{task['name']}: would install but never fire"
+                )
+
 
 class TestDiscoveryPaths:
     def test_workspace_root_is_read_per_call(self, monkeypatch):
