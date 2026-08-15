@@ -1,214 +1,357 @@
-const H = "architecture", L = "architecture.main", E = {
-  implemented: "text-green-400",
-  passing: "text-green-400",
-  partial: "text-amber-400",
-  broken: "text-red-400",
-  fail: "text-red-400",
-  not_implemented: "text-[var(--color-text-muted)]",
-  planned: "text-[var(--color-text-muted)]",
-  unknown: "text-[var(--color-text-muted)]"
-}, U = [
+const D = "architecture", B = "architecture.main";
+const s = {
+  title: 14,
+  tab: 12,
+  row: 11.5,
+  mono: 11,
+  label: 10
+}, H = {
+  implemented: "#4ade80",
+  passing: "#4ade80",
+  partial: "#fbbf24",
+  broken: "#f87171",
+  fail: "#f87171",
+  not_implemented: "var(--color-text-muted)",
+  planned: "var(--color-text-muted)",
+  unknown: "var(--color-text-muted)"
+}, F = [
   { id: "tests", label: "Tests" },
   { id: "requirements", label: "Requirements" },
   { id: "debt", label: "Debt & Bugs" },
   { id: "detail", label: "Detail" }
-];
+], o = {
+  label: { fontSize: s.label, textTransform: "uppercase", letterSpacing: ".06em" },
+  mono: { fontSize: s.mono, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" },
+  th: {
+    fontSize: s.label,
+    textTransform: "uppercase",
+    letterSpacing: ".06em",
+    fontWeight: 500,
+    textAlign: "left",
+    padding: "5px 8px",
+    color: "var(--color-text-muted)",
+    borderBottom: "1px solid var(--color-border)"
+  },
+  td: { fontSize: s.row, padding: "5px 8px", borderBottom: "1px solid var(--color-border)" },
+  btn: {
+    fontSize: s.label,
+    padding: "3px 9px",
+    borderRadius: 6,
+    border: "1px solid var(--color-border)",
+    color: "var(--color-text-muted)",
+    background: "transparent",
+    lineHeight: 1.6,
+    whiteSpace: "nowrap",
+    cursor: "pointer"
+  }
+};
 function j(e) {
-  const { useState: p, useEffect: N, useCallback: _, useMemo: C } = e.React, T = (t, a) => e.sdk.api.fetch(`/api/apps/${H}${t}`, a), g = async (t) => {
-    const a = await T(t);
-    if (!a.ok) throw new Error(`HTTP ${a.status}`);
-    return a.json();
-  }, R = async (t, a) => {
-    const l = await T(t, {
+  const { useState: p, useEffect: w, useCallback: N, useMemo: T } = e.React, R = (t, r) => e.sdk.api.fetch(`/api/apps/${D}${t}`, r), k = async (t) => {
+    const r = await R(t);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  }, z = async (t, r) => {
+    const a = await R(t, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(a || {})
+      body: JSON.stringify(r || {})
     });
-    if (!l.ok) throw new Error(`HTTP ${l.status}`);
-    return l.json();
+    if (!a.ok) throw new Error(`HTTP ${a.status}`);
+    return a.json();
   };
-  function y({ value: t }) {
-    const a = t || "unknown";
-    return /* @__PURE__ */ e.h("span", { className: `text-[10px] uppercase tracking-wide ${E[a] || E.unknown}` }, a.replace(/_/g, " "));
+  function S({ value: t }) {
+    const r = t || "unknown";
+    return /* @__PURE__ */ e.h("span", { style: { ...o.label, color: H[r] || H.unknown, fontWeight: 700 } }, r.replace(/_/g, " "));
   }
-  function u({ children: t }) {
-    return /* @__PURE__ */ e.h("div", { className: "py-8 text-center text-xs text-[var(--color-text-muted)]" }, t);
+  function m({ children: t }) {
+    return /* @__PURE__ */ e.h("div", { style: {
+      padding: "28px 16px",
+      textAlign: "center",
+      fontSize: s.row,
+      color: "var(--color-text-muted)",
+      lineHeight: 1.6
+    } }, t);
   }
-  function S(t) {
-    const a = new Map(t.map((n) => [n.slug, { ...n, children: [] }])), l = [];
-    for (const n of a.values()) {
-      const r = n.parent_slug ? a.get(n.parent_slug) : null;
-      r ? r.children.push(n) : l.push(n);
+  function A(t) {
+    const r = new Map(t.map((l) => [l.slug, { ...l, children: [] }])), a = [];
+    for (const l of r.values()) {
+      const n = l.parent_slug ? r.get(l.parent_slug) : null;
+      n ? n.children.push(l) : a.push(l);
     }
-    const i = (n) => (n.sort((r, c) => r.name.localeCompare(c.name)), n.forEach((r) => i(r.children)), n);
-    return i(l);
+    const u = (l) => (l.sort((n, i) => n.name.localeCompare(i.name)), l.forEach((n) => u(n.children)), l);
+    return u(a);
   }
-  function $({ node: t, depth: a, selected: l, onSelect: i }) {
-    const [n, r] = p(!0), c = l === t.slug;
+  function L({ node: t, depth: r, selected: a, onSelect: u }) {
+    const [l, n] = p(!0), i = a === t.slug;
     return /* @__PURE__ */ e.h("div", null, /* @__PURE__ */ e.h(
       "div",
       {
-        onClick: () => i(t.slug),
-        style: { paddingLeft: `${8 + a * 12}px` },
-        className: `flex items-center gap-1.5 py-1 pr-2 rounded cursor-pointer text-[12px] ${c ? "bg-[var(--color-accent)]/15 text-[var(--color-accent)]" : "hover:bg-white/5 text-[var(--color-text-primary)]"}`
+        onClick: () => u(t.slug),
+        className: "flex items-center gap-1 cursor-pointer",
+        style: {
+          paddingLeft: 6 + r * 12,
+          paddingRight: 6,
+          paddingTop: 3,
+          paddingBottom: 3,
+          borderRadius: 5,
+          fontSize: s.row,
+          background: i ? "rgba(88,166,255,.14)" : "transparent",
+          color: i ? "var(--color-accent)" : "var(--color-text-primary)"
+        }
       },
-      t.children.length > 0 ? /* @__PURE__ */ e.h(
+      /* @__PURE__ */ e.h(
         "span",
         {
-          onClick: (m) => {
-            m.stopPropagation(), r(!n);
+          onClick: (f) => {
+            f.stopPropagation(), n(!l);
           },
-          className: "w-3 shrink-0 text-[var(--color-text-muted)]"
+          style: { width: 11, flexShrink: 0, color: "var(--color-text-muted)", fontSize: s.label }
         },
-        n ? "▾" : "▸"
-      ) : /* @__PURE__ */ e.h("span", { className: "w-3 shrink-0" }),
-      /* @__PURE__ */ e.h("span", { className: "truncate flex-1" }, t.name),
-      /* @__PURE__ */ e.h(y, { value: t.health })
-    ), n && t.children.map((m) => /* @__PURE__ */ e.h($, { key: m.slug, node: m, depth: a + 1, selected: l, onSelect: i })));
+        t.children.length > 0 ? l ? "▾" : "▸" : ""
+      ),
+      /* @__PURE__ */ e.h("span", { className: "truncate", style: { flex: 1 } }, t.name),
+      /* @__PURE__ */ e.h(S, { value: t.health })
+    ), l && t.children.map((f) => /* @__PURE__ */ e.h(L, { key: f.slug, node: f, depth: r + 1, selected: a, onSelect: u })));
   }
-  function O({ slug: t, onBusy: a }) {
-    const [l, i] = p(null), [n, r] = p(null), [c, m] = p({}), [b, f] = p(null), [x, w] = p(!1), v = _(() => {
-      r(null), g(`/component-tests${t ? `?component_slug=${encodeURIComponent(t)}` : ""}`).then(i).catch((o) => r(o.message));
+  function E({ slug: t, onBusy: r }) {
+    const [a, u] = p(null), [l, n] = p(null), [i, f] = p({}), [b, x] = p(null), [y, _] = p(!1), g = N(() => {
+      n(null), k(`/component-tests${t ? `?component_slug=${encodeURIComponent(t)}` : ""}`).then(u).catch((c) => n(c.message));
     }, [t]);
-    N(v, [v]);
-    const k = async (o) => {
-      m((h) => ({ ...h, [o]: !0 })), f(null);
+    w(g, [g]);
+    const C = async (c) => {
+      f((v) => ({ ...v, [c]: !0 })), x(null);
       try {
-        const h = await R("/testcases/run", { file_path: o });
-        f(h), v();
-      } catch (h) {
-        f({
-          file_path: o,
+        const v = await z("/testcases/run", { file_path: c });
+        x(v), g();
+      } catch (v) {
+        x({
+          file_path: c,
           status: "unknown",
-          output: `Could not read the result back (${h.message}). The run may still be going server-side — its recorded status will appear on refresh.`
+          output: `Could not read the result back (${v.message}). The run may still be going server-side — its recorded status will appear on refresh.`
         });
       } finally {
-        m((h) => ({ ...h, [o]: !1 }));
+        f((v) => ({ ...v, [c]: !1 }));
       }
-    }, s = async () => {
-      a(!0);
+    }, d = async () => {
+      r(!0);
       try {
-        await R("/discovery/run"), v();
-      } catch (o) {
-        r(o.message);
+        await z("/discovery/run"), g();
+      } catch (c) {
+        n(c.message);
       } finally {
-        a(!1);
+        r(!1);
       }
-    }, d = C(
-      () => (l || []).filter((o) => !x || o.is_flaky),
-      [l, x]
+    }, h = T(
+      () => (a || []).filter((c) => !y || c.is_flaky),
+      [a, y]
     );
-    return n ? /* @__PURE__ */ e.h(u, null, "Couldn’t load tests — ", n) : l ? /* @__PURE__ */ e.h("div", { className: "flex flex-col h-full min-h-0" }, /* @__PURE__ */ e.h("div", { className: "flex items-center gap-2 mb-2 shrink-0" }, /* @__PURE__ */ e.h(
+    return l ? /* @__PURE__ */ e.h(m, null, "Couldn’t load tests — ", l) : a ? /* @__PURE__ */ e.h("div", { className: "flex flex-col h-full min-h-0" }, /* @__PURE__ */ e.h("div", { className: "flex items-center gap-2 shrink-0", style: { marginBottom: 8 } }, /* @__PURE__ */ e.h(
       "button",
       {
-        onClick: s,
-        className: "text-[10.5px] px-2.5 py-1 rounded border border-[var(--color-accent)]/40 text-[var(--color-accent)]"
+        onClick: d,
+        style: { ...o.btn, color: "var(--color-accent)", borderColor: "rgba(88,166,255,.4)" }
       },
       "⟳ Rescan discovery"
     ), /* @__PURE__ */ e.h(
       "button",
       {
-        onClick: () => w(!x),
-        className: `text-[10.5px] px-2.5 py-1 rounded border border-[var(--color-border)] ${x ? "text-amber-400" : "text-[var(--color-text-muted)]"}`
+        onClick: () => _(!y),
+        style: { ...o.btn, color: y ? "#fbbf24" : "var(--color-text-muted)" }
       },
       "⚑ Flaky only"
-    ), /* @__PURE__ */ e.h("span", { className: "ml-auto text-[10.5px] text-[var(--color-text-muted)]" }, d.length, " test", d.length === 1 ? "" : "s")), /* @__PURE__ */ e.h("div", { className: "overflow-auto min-h-0 flex-1" }, /* @__PURE__ */ e.h("table", { className: "w-full text-[11.5px]" }, /* @__PURE__ */ e.h("thead", null, /* @__PURE__ */ e.h("tr", { className: "text-left text-[10px] uppercase tracking-wide text-[var(--color-text-muted)] border-b border-[var(--color-border)]" }, /* @__PURE__ */ e.h("th", { className: "py-1.5 px-2 w-6" }), /* @__PURE__ */ e.h("th", { className: "py-1.5 px-2" }, "Test file"), /* @__PURE__ */ e.h("th", { className: "py-1.5 px-2" }, "Kind"), /* @__PURE__ */ e.h("th", { className: "py-1.5 px-2" }, "Component"), /* @__PURE__ */ e.h("th", { className: "py-1.5 px-2" }, "Last run"))), /* @__PURE__ */ e.h("tbody", null, d.map((o) => /* @__PURE__ */ e.h("tr", { key: o.file_path, className: "border-b border-[var(--color-border)]/40" }, /* @__PURE__ */ e.h("td", { className: "py-1.5 px-2" }, /* @__PURE__ */ e.h(
+    ), /* @__PURE__ */ e.h("span", { style: { marginLeft: "auto", fontSize: s.label, color: "var(--color-text-muted)" } }, h.length, " test", h.length === 1 ? "" : "s")), /* @__PURE__ */ e.h("div", { className: "overflow-auto min-h-0 flex-1" }, /* @__PURE__ */ e.h("table", { style: { width: "100%", borderCollapse: "collapse" } }, /* @__PURE__ */ e.h("thead", null, /* @__PURE__ */ e.h("tr", null, /* @__PURE__ */ e.h("th", { style: { ...o.th, width: 26 } }), /* @__PURE__ */ e.h("th", { style: o.th }, "Test file"), /* @__PURE__ */ e.h("th", { style: o.th }, "Kind"), /* @__PURE__ */ e.h("th", { style: o.th }, "Component"), /* @__PURE__ */ e.h("th", { style: o.th }, "Last run"))), /* @__PURE__ */ e.h("tbody", null, h.map((c) => /* @__PURE__ */ e.h("tr", { key: c.file_path }, /* @__PURE__ */ e.h("td", { style: o.td }, /* @__PURE__ */ e.h(
       "button",
       {
-        onClick: () => k(o.file_path),
-        disabled: c[o.file_path],
+        onClick: () => C(c.file_path),
+        disabled: i[c.file_path],
         title: "Run this test",
-        className: "text-green-400 disabled:opacity-40"
+        style: { color: "#4ade80", background: "none", border: 0, cursor: "pointer" }
       },
-      c[o.file_path] ? "…" : "▶"
-    )), /* @__PURE__ */ e.h("td", { className: "py-1.5 px-2 font-mono text-[11px] text-[var(--color-text-primary)]" }, o.file_path, o.is_flaky && /* @__PURE__ */ e.h("span", { className: "ml-1.5 text-amber-400", title: o.flaky_note || "flaky" }, "⚑")), /* @__PURE__ */ e.h("td", { className: "py-1.5 px-2 text-[var(--color-text-muted)]" }, o.kind), /* @__PURE__ */ e.h("td", { className: "py-1.5 px-2 text-[var(--color-text-muted)]" }, o.component_slug || "—"), /* @__PURE__ */ e.h("td", { className: "py-1.5 px-2" }, /* @__PURE__ */ e.h(y, { value: o.last_run_status })))))), d.length === 0 && /* @__PURE__ */ e.h(u, null, x ? "No tests flagged flaky." : "No tests here yet. Set a component’s test_base_path, then Rescan discovery.")), b && /* @__PURE__ */ e.h("div", { className: "shrink-0 mt-2 border-t border-[var(--color-border)] pt-2" }, /* @__PURE__ */ e.h("div", { className: "flex items-center gap-2 text-[11px] mb-1" }, /* @__PURE__ */ e.h(y, { value: b.status }), /* @__PURE__ */ e.h("span", { className: "font-mono text-[10.5px] text-[var(--color-text-muted)]" }, b.file_path), /* @__PURE__ */ e.h("button", { onClick: () => f(null), className: "ml-auto text-[var(--color-text-muted)]" }, "✕")), /* @__PURE__ */ e.h("pre", { className: `text-[10px] leading-[1.45] max-h-40 overflow-auto whitespace-pre-wrap
-                            text-[var(--color-text-muted)] font-mono` }, b.output))) : /* @__PURE__ */ e.h(u, null, "Loading…");
+      i[c.file_path] ? "…" : "▶"
+    )), /* @__PURE__ */ e.h("td", { style: { ...o.td, ...o.mono, color: "var(--color-text-primary)" } }, c.file_path, c.is_flaky && /* @__PURE__ */ e.h("span", { style: { marginLeft: 6, color: "#fbbf24" }, title: c.flaky_note || "flaky" }, "⚑")), /* @__PURE__ */ e.h("td", { style: { ...o.td, color: "var(--color-text-muted)" } }, c.kind), /* @__PURE__ */ e.h("td", { style: { ...o.td, color: "var(--color-text-muted)" } }, c.component_slug || "—"), /* @__PURE__ */ e.h("td", { style: o.td }, /* @__PURE__ */ e.h(S, { value: c.last_run_status })))))), h.length === 0 && /* @__PURE__ */ e.h(m, null, y ? "No tests flagged flaky." : "No tests here yet. Set a component’s test_base_path, then Rescan discovery.")), b && /* @__PURE__ */ e.h("div", { className: "shrink-0", style: {
+      marginTop: 8,
+      paddingTop: 8,
+      borderTop: "1px solid var(--color-border)"
+    } }, /* @__PURE__ */ e.h("div", { className: "flex items-center gap-2", style: { marginBottom: 4 } }, /* @__PURE__ */ e.h(S, { value: b.status }), /* @__PURE__ */ e.h("span", { style: { ...o.mono, color: "var(--color-text-muted)" } }, b.file_path), /* @__PURE__ */ e.h(
+      "button",
+      {
+        onClick: () => x(null),
+        style: {
+          marginLeft: "auto",
+          background: "none",
+          border: 0,
+          color: "var(--color-text-muted)",
+          cursor: "pointer"
+        }
+      },
+      "✕"
+    )), /* @__PURE__ */ e.h("pre", { style: {
+      fontSize: s.label,
+      lineHeight: 1.45,
+      maxHeight: 160,
+      overflow: "auto",
+      whiteSpace: "pre-wrap",
+      margin: 0,
+      color: "var(--color-text-muted)",
+      fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace"
+    } }, b.output))) : /* @__PURE__ */ e.h(m, null, "Loading…");
   }
-  function q({ slug: t }) {
-    const [a, l] = p(null), [i, n] = p(null);
-    return N(() => {
+  function I({ slug: t }) {
+    const [r, a] = p(null), [u, l] = p(null);
+    return w(() => {
       if (!t) {
-        l([]);
+        a([]);
         return;
       }
-      l(null), n(null), g(`/components/${encodeURIComponent(t)}/requirements`).then(l).catch((r) => n(r.message));
-    }, [t]), t ? i ? /* @__PURE__ */ e.h(u, null, "Couldn’t load requirements — ", i) : a ? a.length === 0 ? /* @__PURE__ */ e.h(u, null, "No requirements documented for this component.") : /* @__PURE__ */ e.h("div", { className: "overflow-auto h-full space-y-2.5" }, a.map((r) => /* @__PURE__ */ e.h("div", { key: r.id, className: "border border-[var(--color-border)] rounded-lg p-3" }, /* @__PURE__ */ e.h("div", { className: "flex items-start gap-2 mb-1.5" }, /* @__PURE__ */ e.h("span", { className: "text-[12.5px] text-[var(--color-text-primary)] flex-1" }, r.title), /* @__PURE__ */ e.h(y, { value: r.health })), /* @__PURE__ */ e.h("div", { className: "text-[11px] leading-relaxed text-[var(--color-text-muted)] space-y-0.5" }, /* @__PURE__ */ e.h("div", null, /* @__PURE__ */ e.h("b", { className: "text-[var(--color-text-primary)]" }, "Given"), " ", r.gherkin_given), /* @__PURE__ */ e.h("div", null, /* @__PURE__ */ e.h("b", { className: "text-[var(--color-text-primary)]" }, "When"), " ", r.gherkin_when), /* @__PURE__ */ e.h("div", null, /* @__PURE__ */ e.h("b", { className: "text-[var(--color-text-primary)]" }, "Then"), " ", r.gherkin_then)), /* @__PURE__ */ e.h("div", { className: "mt-2 flex items-center gap-2 text-[10px] text-[var(--color-text-muted)]" }, /* @__PURE__ */ e.h("span", null, "intended: ", /* @__PURE__ */ e.h("code", null, r.intended_status)), r.kanban_url ? /* @__PURE__ */ e.h(
+      a(null), l(null), k(`/components/${encodeURIComponent(t)}/requirements`).then(a).catch((n) => l(n.message));
+    }, [t]), t ? u ? /* @__PURE__ */ e.h(m, null, "Couldn’t load requirements — ", u) : r ? r.length === 0 ? /* @__PURE__ */ e.h(m, null, "No requirements documented for this component.") : /* @__PURE__ */ e.h("div", { className: "overflow-auto h-full" }, r.map((n) => /* @__PURE__ */ e.h("div", { key: n.id, style: {
+      border: "1px solid var(--color-border)",
+      borderRadius: 8,
+      padding: 10,
+      marginBottom: 8
+    } }, /* @__PURE__ */ e.h("div", { className: "flex items-start gap-2", style: { marginBottom: 6 } }, /* @__PURE__ */ e.h("span", { style: { fontSize: s.tab, flex: 1, color: "var(--color-text-primary)" } }, n.title), /* @__PURE__ */ e.h(S, { value: n.health })), /* @__PURE__ */ e.h("div", { style: { fontSize: s.row, lineHeight: 1.65, color: "var(--color-text-muted)" } }, /* @__PURE__ */ e.h("div", null, /* @__PURE__ */ e.h("b", { style: { color: "var(--color-text-primary)" } }, "Given"), " ", n.gherkin_given), /* @__PURE__ */ e.h("div", null, /* @__PURE__ */ e.h("b", { style: { color: "var(--color-text-primary)" } }, "When"), " ", n.gherkin_when), /* @__PURE__ */ e.h("div", null, /* @__PURE__ */ e.h("b", { style: { color: "var(--color-text-primary)" } }, "Then"), " ", n.gherkin_then)), /* @__PURE__ */ e.h("div", { className: "flex items-center gap-2", style: {
+      marginTop: 8,
+      fontSize: s.label,
+      color: "var(--color-text-muted)"
+    } }, /* @__PURE__ */ e.h("span", null, "intended: ", /* @__PURE__ */ e.h("code", { style: o.mono }, n.intended_status)), n.kanban_url ? /* @__PURE__ */ e.h(
       "a",
       {
-        href: r.kanban_url,
+        href: n.kanban_url,
         target: "_blank",
         rel: "noreferrer",
-        className: "text-[var(--color-accent)]"
+        style: { color: "var(--color-accent)" }
       },
       "Kanban card ↗"
-    ) : /* @__PURE__ */ e.h("span", { className: "text-amber-400/80" }, "no Kanban card linked"))))) : /* @__PURE__ */ e.h(u, null, "Loading…") : /* @__PURE__ */ e.h(u, null, "Select a component to see its requirements.");
+    ) : /* @__PURE__ */ e.h("span", { style: { color: "#fbbf24" } }, "no Kanban card linked"))))) : /* @__PURE__ */ e.h(m, null, "Loading…") : /* @__PURE__ */ e.h(m, null, "Select a component to see its requirements.");
   }
-  function D({ slug: t }) {
-    const [a, l] = p(null), [i, n] = p(null);
-    return N(() => {
-      l(null), n(null), g(`/debt${t ? `?component_slug=${encodeURIComponent(t)}` : ""}`).then(l).catch((r) => n(r.message));
-    }, [t]), i ? /* @__PURE__ */ e.h(u, null, "Couldn’t load debt notes — ", i) : a ? a.length === 0 ? /* @__PURE__ */ e.h(u, null, "No open technical-debt notes.") : /* @__PURE__ */ e.h("div", { className: "overflow-auto h-full" }, /* @__PURE__ */ e.h("table", { className: "w-full text-[11.5px]" }, /* @__PURE__ */ e.h("thead", null, /* @__PURE__ */ e.h("tr", { className: "text-left text-[10px] uppercase tracking-wide text-[var(--color-text-muted)] border-b border-[var(--color-border)]" }, /* @__PURE__ */ e.h("th", { className: "py-1.5 px-2" }, "Noted"), /* @__PURE__ */ e.h("th", { className: "py-1.5 px-2" }, "Component"), /* @__PURE__ */ e.h("th", { className: "py-1.5 px-2" }, "Description"))), /* @__PURE__ */ e.h("tbody", null, a.map((r) => /* @__PURE__ */ e.h("tr", { key: r.id, className: "border-b border-[var(--color-border)]/40" }, /* @__PURE__ */ e.h("td", { className: "py-1.5 px-2 text-[var(--color-text-muted)] whitespace-nowrap" }, (r.noted_at || "").slice(0, 10)), /* @__PURE__ */ e.h("td", { className: "py-1.5 px-2 text-[var(--color-text-muted)]" }, r.component_slug || "—"), /* @__PURE__ */ e.h("td", { className: "py-1.5 px-2 text-[var(--color-text-primary)]" }, r.description)))))) : /* @__PURE__ */ e.h(u, null, "Loading…");
+  function M({ slug: t }) {
+    const [r, a] = p(null), [u, l] = p(null);
+    return w(() => {
+      a(null), l(null), k(`/debt${t ? `?component_slug=${encodeURIComponent(t)}` : ""}`).then(a).catch((n) => l(n.message));
+    }, [t]), u ? /* @__PURE__ */ e.h(m, null, "Couldn’t load debt notes — ", u) : r ? r.length === 0 ? /* @__PURE__ */ e.h(m, null, "No open technical-debt notes.") : /* @__PURE__ */ e.h("div", { className: "overflow-auto h-full" }, /* @__PURE__ */ e.h("table", { style: { width: "100%", borderCollapse: "collapse" } }, /* @__PURE__ */ e.h("thead", null, /* @__PURE__ */ e.h("tr", null, /* @__PURE__ */ e.h("th", { style: o.th }, "Noted"), /* @__PURE__ */ e.h("th", { style: o.th }, "Component"), /* @__PURE__ */ e.h("th", { style: o.th }, "Description"))), /* @__PURE__ */ e.h("tbody", null, r.map((n) => /* @__PURE__ */ e.h("tr", { key: n.id }, /* @__PURE__ */ e.h("td", { style: { ...o.td, color: "var(--color-text-muted)", whiteSpace: "nowrap" } }, (n.noted_at || "").slice(0, 10)), /* @__PURE__ */ e.h("td", { style: { ...o.td, color: "var(--color-text-muted)" } }, n.component_slug || "—"), /* @__PURE__ */ e.h("td", { style: { ...o.td, color: "var(--color-text-primary)" } }, n.description)))))) : /* @__PURE__ */ e.h(m, null, "Loading…");
   }
-  function A({ slug: t }) {
-    const [a, l] = p(null), [i, n] = p(null);
-    if (N(() => {
+  function O({ slug: t }) {
+    const [r, a] = p(null), [u, l] = p(null);
+    if (w(() => {
       if (!t) {
-        l(null);
+        a(null);
         return;
       }
-      l(null), n(null), g(`/components/${encodeURIComponent(t)}`).then(l).catch((c) => n(c.message));
-    }, [t]), !t) return /* @__PURE__ */ e.h(u, null, "Select a component.");
-    if (i) return /* @__PURE__ */ e.h(u, null, "Couldn’t load component — ", i);
-    if (!a) return /* @__PURE__ */ e.h(u, null, "Loading…");
-    const r = ({ k: c, v: m }) => /* @__PURE__ */ e.h("div", { className: "flex gap-3 py-1 border-b border-[var(--color-border)]/40" }, /* @__PURE__ */ e.h("span", { className: "w-32 shrink-0 text-[10px] uppercase tracking-wide text-[var(--color-text-muted)] pt-0.5" }, c), /* @__PURE__ */ e.h("span", { className: "text-[11.5px] text-[var(--color-text-primary)]" }, m));
-    return /* @__PURE__ */ e.h("div", { className: "overflow-auto h-full" }, /* @__PURE__ */ e.h("div", { className: "flex items-center gap-2 mb-3" }, /* @__PURE__ */ e.h("span", { className: "text-[14px] text-[var(--color-text-primary)]" }, a.name), /* @__PURE__ */ e.h(y, { value: a.health })), /* @__PURE__ */ e.h(r, { k: "slug", v: /* @__PURE__ */ e.h("code", { className: "text-[11px]" }, a.slug) }), /* @__PURE__ */ e.h(r, { k: "repo", v: a.repo || "—" }), /* @__PURE__ */ e.h(r, { k: "layer", v: a.layer || "—" }), /* @__PURE__ */ e.h(r, { k: "technologies", v: (a.technologies || []).join(", ") || "—" }), /* @__PURE__ */ e.h(r, { k: "test_base_path", v: /* @__PURE__ */ e.h("code", { className: "text-[11px]" }, a.test_base_path || "—") }), /* @__PURE__ */ e.h(r, { k: "run_cmd", v: /* @__PURE__ */ e.h("code", { className: "text-[11px]" }, a.run_cmd || "—") }), /* @__PURE__ */ e.h(r, { k: "test_cmd", v: /* @__PURE__ */ e.h("code", { className: "text-[11px]" }, a.test_cmd || "—") }), a.description && /* @__PURE__ */ e.h("p", { className: "mt-3 text-[11.5px] leading-relaxed text-[var(--color-text-muted)] whitespace-pre-wrap" }, a.description), /* @__PURE__ */ e.h("div", { className: "mt-4" }, /* @__PURE__ */ e.h("div", { className: "text-[10px] uppercase tracking-wide text-[var(--color-text-muted)] mb-1" }, "Connections"), (a.connections || []).length === 0 ? /* @__PURE__ */ e.h("div", { className: "text-[11.5px] text-[var(--color-text-muted)]" }, "none") : (a.connections || []).map((c) => /* @__PURE__ */ e.h("div", { key: c.id, className: "text-[11.5px] text-[var(--color-text-primary)]" }, /* @__PURE__ */ e.h("code", { className: "text-[10.5px] text-[var(--color-accent)]" }, c.kind), " → ", c.to_slug, c.description ? /* @__PURE__ */ e.h("span", { className: "text-[var(--color-text-muted)]" }, " — ", c.description) : null))), /* @__PURE__ */ e.h("div", { className: "mt-3" }, /* @__PURE__ */ e.h("div", { className: "text-[10px] uppercase tracking-wide text-[var(--color-text-muted)] mb-1" }, "MCP tools"), (a.tools || []).length === 0 ? /* @__PURE__ */ e.h("div", { className: "text-[11.5px] text-[var(--color-text-muted)]" }, "none exposed") : (a.tools || []).map((c) => /* @__PURE__ */ e.h("div", { key: c.id, className: "text-[11.5px] font-mono text-[var(--color-text-primary)]" }, c.name))));
-  }
-  function I() {
-    const [t, a] = p(null), [l, i] = p(null), [n, r] = p(null), [c, m] = p("tests"), [b, f] = p(!1), [x, w] = p(""), v = _(() => {
-      i(null), g("/components").then(a).catch((s) => i(s.message));
-    }, []);
-    N(v, [v]);
-    const k = C(() => {
-      if (!t) return [];
-      const s = x.trim().toLowerCase();
-      return s ? t.filter((d) => d.slug.toLowerCase().includes(s) || d.name.toLowerCase().includes(s)).map((d) => ({ ...d, children: [] })).sort((d, o) => d.name.localeCompare(o.name)) : S(t);
-    }, [t, x]);
-    return /* @__PURE__ */ e.h("div", { className: "flex h-full min-h-0 text-[var(--color-text-primary)]" }, /* @__PURE__ */ e.h("div", { className: "w-[240px] shrink-0 border-r border-[var(--color-border)] flex flex-col min-h-0" }, /* @__PURE__ */ e.h("div", { className: "p-2 shrink-0" }, /* @__PURE__ */ e.h(
-      "input",
-      {
-        value: x,
-        onChange: (s) => w(s.target.value),
-        placeholder: "Filter components…",
-        className: `w-full bg-transparent border border-[var(--color-border)] rounded px-2 py-1
-                         text-[11.5px] outline-none focus:border-[var(--color-accent)]/50`
-      }
-    )), /* @__PURE__ */ e.h("div", { className: "overflow-auto flex-1 min-h-0 px-1 pb-2" }, l && /* @__PURE__ */ e.h(u, null, "Couldn’t load — ", l), !t && !l && /* @__PURE__ */ e.h(u, null, "Loading…"), t && t.length === 0 && /* @__PURE__ */ e.h(u, null, "No components registered yet. The catalog is managed through the", /* @__PURE__ */ e.h("code", { className: "mx-1" }, "aw__architecture__*"), " MCP tools."), k.map((s) => /* @__PURE__ */ e.h($, { key: s.slug, node: s, depth: 0, selected: n, onSelect: r })))), /* @__PURE__ */ e.h("div", { className: "flex-1 flex flex-col min-w-0 min-h-0" }, /* @__PURE__ */ e.h("div", { className: "flex items-center gap-1 px-2 border-b border-[var(--color-border)] shrink-0" }, U.map((s) => /* @__PURE__ */ e.h(
-      "button",
-      {
-        key: s.id,
-        onClick: () => m(s.id),
-        className: `px-3 py-2 text-[12px] border-b-2 ${c === s.id ? "border-[var(--color-accent)] text-[var(--color-text-primary)]" : "border-transparent text-[var(--color-text-muted)]"}`
-      },
-      s.label
-    )), /* @__PURE__ */ e.h("span", { className: "ml-auto pr-1 text-[10.5px] text-[var(--color-text-muted)]" }, b ? "scanning…" : n || "all components")), /* @__PURE__ */ e.h("div", { className: "flex-1 min-h-0 p-3" }, c === "tests" && /* @__PURE__ */ e.h(O, { slug: n, onBusy: (s) => {
-      f(s), s || v();
-    } }), c === "requirements" && /* @__PURE__ */ e.h(q, { slug: n }), c === "debt" && /* @__PURE__ */ e.h(D, { slug: n }), c === "detail" && /* @__PURE__ */ e.h(A, { slug: n }))));
+      a(null), l(null), k(`/components/${encodeURIComponent(t)}`).then(a).catch((i) => l(i.message));
+    }, [t]), !t) return /* @__PURE__ */ e.h(m, null, "Select a component.");
+    if (u) return /* @__PURE__ */ e.h(m, null, "Couldn’t load component — ", u);
+    if (!r) return /* @__PURE__ */ e.h(m, null, "Loading…");
+    const n = ({ k: i, v: f }) => /* @__PURE__ */ e.h("div", { className: "flex gap-3", style: {
+      padding: "4px 0",
+      borderBottom: "1px solid var(--color-border)"
+    } }, /* @__PURE__ */ e.h("span", { style: {
+      ...o.label,
+      width: 118,
+      flexShrink: 0,
+      color: "var(--color-text-muted)",
+      paddingTop: 2
+    } }, i), /* @__PURE__ */ e.h("span", { style: { fontSize: s.row, color: "var(--color-text-primary)" } }, f));
+    return /* @__PURE__ */ e.h("div", { className: "overflow-auto h-full" }, /* @__PURE__ */ e.h("div", { className: "flex items-center gap-2", style: { marginBottom: 10 } }, /* @__PURE__ */ e.h("span", { style: { fontSize: s.title, color: "var(--color-text-primary)" } }, r.name), /* @__PURE__ */ e.h(S, { value: r.health })), /* @__PURE__ */ e.h(n, { k: "slug", v: /* @__PURE__ */ e.h("code", { style: o.mono }, r.slug) }), /* @__PURE__ */ e.h(n, { k: "repo", v: r.repo || "—" }), /* @__PURE__ */ e.h(n, { k: "layer", v: r.layer || "—" }), /* @__PURE__ */ e.h(n, { k: "technologies", v: (r.technologies || []).join(", ") || "—" }), /* @__PURE__ */ e.h(n, { k: "test_base_path", v: /* @__PURE__ */ e.h("code", { style: o.mono }, r.test_base_path || "—") }), /* @__PURE__ */ e.h(n, { k: "run_cmd", v: /* @__PURE__ */ e.h("code", { style: o.mono }, r.run_cmd || "—") }), /* @__PURE__ */ e.h(n, { k: "test_cmd", v: /* @__PURE__ */ e.h("code", { style: o.mono }, r.test_cmd || "—") }), r.description && /* @__PURE__ */ e.h("p", { style: {
+      marginTop: 12,
+      fontSize: s.row,
+      lineHeight: 1.6,
+      color: "var(--color-text-muted)",
+      whiteSpace: "pre-wrap"
+    } }, r.description), /* @__PURE__ */ e.h("div", { style: { marginTop: 14 } }, /* @__PURE__ */ e.h("div", { style: { ...o.label, color: "var(--color-text-muted)", marginBottom: 4 } }, "Connections"), (r.connections || []).length === 0 ? /* @__PURE__ */ e.h("div", { style: { fontSize: s.row, color: "var(--color-text-muted)" } }, "none") : (r.connections || []).map((i) => /* @__PURE__ */ e.h("div", { key: i.id, style: { fontSize: s.row, color: "var(--color-text-primary)" } }, /* @__PURE__ */ e.h("code", { style: { ...o.mono, color: "var(--color-accent)" } }, i.kind), " → ", i.to_slug, i.description ? /* @__PURE__ */ e.h("span", { style: { color: "var(--color-text-muted)" } }, " — ", i.description) : null))), /* @__PURE__ */ e.h("div", { style: { marginTop: 12 } }, /* @__PURE__ */ e.h("div", { style: { ...o.label, color: "var(--color-text-muted)", marginBottom: 4 } }, "MCP tools"), (r.tools || []).length === 0 ? /* @__PURE__ */ e.h("div", { style: { fontSize: s.row, color: "var(--color-text-muted)" } }, "none exposed") : (r.tools || []).map((i) => /* @__PURE__ */ e.h("div", { key: i.id, style: { ...o.mono, color: "var(--color-text-primary)" } }, i.name))));
   }
   function W() {
+    const [t, r] = p(null), [a, u] = p(null), [l, n] = p(null), [i, f] = p("tests"), [b, x] = p(!1), [y, _] = p(""), g = N(() => {
+      u(null), k("/components").then(r).catch((d) => u(d.message));
+    }, []);
+    w(g, [g]);
+    const C = T(() => {
+      if (!t) return [];
+      const d = y.trim().toLowerCase();
+      return d ? t.filter((h) => h.slug.toLowerCase().includes(d) || h.name.toLowerCase().includes(d)).map((h) => ({ ...h, children: [] })).sort((h, c) => h.name.localeCompare(c.name)) : A(t);
+    }, [t, y]);
+    return /* @__PURE__ */ e.h("div", { className: "flex h-full min-h-0", style: { color: "var(--color-text-primary)" } }, /* @__PURE__ */ e.h("div", { className: "flex flex-col min-h-0", style: {
+      width: 240,
+      flexShrink: 0,
+      borderRight: "1px solid var(--color-border)"
+    } }, /* @__PURE__ */ e.h("div", { className: "shrink-0", style: { padding: 8 } }, /* @__PURE__ */ e.h(
+      "input",
+      {
+        value: y,
+        onChange: (d) => _(d.target.value),
+        placeholder: "Filter components…",
+        style: {
+          width: "100%",
+          background: "transparent",
+          outline: "none",
+          border: "1px solid var(--color-border)",
+          borderRadius: 6,
+          padding: "4px 7px",
+          fontSize: s.row,
+          color: "var(--color-text-primary)"
+        }
+      }
+    )), /* @__PURE__ */ e.h("div", { className: "overflow-auto flex-1 min-h-0", style: { padding: "0 6px 8px" } }, a && /* @__PURE__ */ e.h(m, null, "Couldn’t load — ", a), !t && !a && /* @__PURE__ */ e.h(m, null, "Loading…"), t && t.length === 0 && /* @__PURE__ */ e.h(m, null, "No components registered yet — the catalog is curated through the architecture MCP tools."), C.map((d) => /* @__PURE__ */ e.h(L, { key: d.slug, node: d, depth: 0, selected: l, onSelect: n })))), /* @__PURE__ */ e.h("div", { className: "flex flex-col min-w-0 min-h-0", style: { flex: 1 } }, /* @__PURE__ */ e.h("div", { className: "flex items-center shrink-0", style: {
+      padding: "0 8px",
+      borderBottom: "1px solid var(--color-border)"
+    } }, F.map((d) => /* @__PURE__ */ e.h(
+      "button",
+      {
+        key: d.id,
+        onClick: () => f(d.id),
+        style: {
+          padding: "7px 11px",
+          fontSize: s.tab,
+          background: "none",
+          cursor: "pointer",
+          border: 0,
+          borderBottom: "2px solid",
+          borderBottomColor: i === d.id ? "var(--color-accent)" : "transparent",
+          color: i === d.id ? "var(--color-text-primary)" : "var(--color-text-muted)"
+        }
+      },
+      d.label
+    )), /* @__PURE__ */ e.h("span", { style: {
+      marginLeft: "auto",
+      paddingRight: 4,
+      fontSize: s.label,
+      color: "var(--color-text-muted)"
+    } }, b ? "scanning…" : l || "all components")), /* @__PURE__ */ e.h("div", { className: "flex-1 min-h-0", style: { padding: 10 } }, i === "tests" && /* @__PURE__ */ e.h(E, { slug: l, onBusy: (d) => {
+      x(d), d || g();
+    } }), i === "requirements" && /* @__PURE__ */ e.h(I, { slug: l }), i === "debt" && /* @__PURE__ */ e.h(M, { slug: l }), i === "detail" && /* @__PURE__ */ e.h(O, { slug: l }))));
+  }
+  function $() {
+    return /* @__PURE__ */ e.h(
+      "svg",
+      {
+        className: "w-3.5 h-3.5 shrink-0 text-[var(--color-text-muted)]",
+        viewBox: "0 0 24 24",
+        fill: "none",
+        stroke: "currentColor",
+        strokeWidth: "2",
+        strokeLinecap: "round",
+        strokeLinejoin: "round"
+      },
+      /* @__PURE__ */ e.h("path", { d: "M12 2L2 7l10 5 10-5-10-5z" }),
+      /* @__PURE__ */ e.h("path", { d: "M2 17l10 5 10-5" }),
+      /* @__PURE__ */ e.h("path", { d: "M2 12l10 5 10-5" })
+    );
+  }
+  function q() {
     return /* @__PURE__ */ e.h(
       "button",
       {
         onClick: () => {
           var t;
-          return (t = window.__awOpenAppWindow) == null ? void 0 : t.call(window, L, void 0, "Architecture");
+          return (t = window.__awOpenAppWindow) == null ? void 0 : t.call(window, B, void 0, "Architecture");
         },
-        className: "flex items-center gap-2 w-full px-3 py-1.5 hover:bg-white/5 text-left",
+        className: "w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white/[0.06] cursor-pointer text-left",
         title: "Components, requirements, test traceability"
       },
-      /* @__PURE__ */ e.h("span", { className: "text-[13px]" }, "Architecture")
+      /* @__PURE__ */ e.h($, null),
+      /* @__PURE__ */ e.h("span", { className: "text-[13px] text-[var(--color-text-primary)]" }, "Architecture")
     );
   }
-  e.registerWindow(L, I), e.registerSlot("core.nav.workspace", W);
+  e.registerWindow(B, W), e.registerSlot("core.nav.workspace", q);
 }
 export {
   j as default,

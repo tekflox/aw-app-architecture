@@ -23,19 +23,50 @@
 // The left rail is a TREE, not the old flat table: `component.parent_slug` was
 // always in the schema (self-referencing FK) and the old table dropped it,
 // which is why a 40-component catalog read as an undifferentiated list.
+//
+// ---------------------------------------------------------------------------
+// SIZING IS INLINE, ON PURPOSE — do not "tidy" it back into Tailwind classes.
+//
+// An app bundle is loaded into the SPA at runtime; the SPA's CSS was compiled
+// long before, from ITS OWN source. Tailwind only emits the arbitrary-value
+// utilities it saw while scanning that source, so a class this file invents is
+// simply absent at runtime. Verified against the built stylesheet: core uses
+// (and therefore ships) `text-[10px]`, `text-[12px]`, `text-[13px]` and the
+// `[var(--color-*)]` colour utilities, but nothing emits `text-[11.5px]`,
+// `text-[12.5px]` or `w-[240px]`.
+//
+// The failure is silent and looks like a layout bug: `w-[240px] shrink-0` on
+// the rail resolved to no width rule at all, so flex split the window ~50/50,
+// and every `text-[10.5px]` label rendered at the inherited size. Everything
+// dimensional therefore goes through `style={{…}}`, which cannot vanish.
+// Structural utilities (flex, gap-2, px-2, overflow-auto) and the colour
+// variables are safe — core uses them everywhere.
+// ---------------------------------------------------------------------------
 
 const SLUG = 'architecture';
 const WINDOW_ID = 'architecture.main';
 
+const RAIL_WIDTH = 240;
+
+// Type scale, in px. Named so the intent survives being inline.
+const FS = {
+  title: 14,
+  nav: 13,
+  tab: 12,
+  row: 11.5,
+  mono: 11,
+  label: 10,
+};
+
 const HEALTH_COLOR = {
-  implemented: 'text-green-400',
-  passing: 'text-green-400',
-  partial: 'text-amber-400',
-  broken: 'text-red-400',
-  fail: 'text-red-400',
-  not_implemented: 'text-[var(--color-text-muted)]',
-  planned: 'text-[var(--color-text-muted)]',
-  unknown: 'text-[var(--color-text-muted)]',
+  implemented: '#4ade80',
+  passing: '#4ade80',
+  partial: '#fbbf24',
+  broken: '#f87171',
+  fail: '#f87171',
+  not_implemented: 'var(--color-text-muted)',
+  planned: 'var(--color-text-muted)',
+  unknown: 'var(--color-text-muted)',
 };
 
 const TABS = [
@@ -44,6 +75,23 @@ const TABS = [
   { id: 'debt', label: 'Debt & Bugs' },
   { id: 'detail', label: 'Detail' },
 ];
+
+const S = {
+  label: { fontSize: FS.label, textTransform: 'uppercase', letterSpacing: '.06em' },
+  mono: { fontSize: FS.mono, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' },
+  th: {
+    fontSize: FS.label, textTransform: 'uppercase', letterSpacing: '.06em',
+    fontWeight: 500, textAlign: 'left', padding: '5px 8px',
+    color: 'var(--color-text-muted)',
+    borderBottom: '1px solid var(--color-border)',
+  },
+  td: { fontSize: FS.row, padding: '5px 8px', borderBottom: '1px solid var(--color-border)' },
+  btn: {
+    fontSize: FS.label, padding: '3px 9px', borderRadius: 6,
+    border: '1px solid var(--color-border)', color: 'var(--color-text-muted)',
+    background: 'transparent', lineHeight: 1.6, whiteSpace: 'nowrap', cursor: 'pointer',
+  },
+};
 
 export function register(host) {
   const { useState, useEffect, useCallback, useMemo } = host.React;
@@ -69,7 +117,7 @@ export function register(host) {
   function Health({ value }) {
     const v = value || 'unknown';
     return (
-      <span className={`text-[10px] uppercase tracking-wide ${HEALTH_COLOR[v] || HEALTH_COLOR.unknown}`}>
+      <span style={{ ...S.label, color: HEALTH_COLOR[v] || HEALTH_COLOR.unknown, fontWeight: 700 }}>
         {v.replace(/_/g, ' ')}
       </span>
     );
@@ -77,7 +125,10 @@ export function register(host) {
 
   function Empty({ children }) {
     return (
-      <div className="py-8 text-center text-xs text-[var(--color-text-muted)]">{children}</div>
+      <div style={{
+        padding: '28px 16px', textAlign: 'center', fontSize: FS.row,
+        color: 'var(--color-text-muted)', lineHeight: 1.6,
+      }}>{children}</div>
     );
   }
 
@@ -91,9 +142,9 @@ export function register(host) {
     const roots = [];
     for (const node of bySlug.values()) {
       const parent = node.parent_slug ? bySlug.get(node.parent_slug) : null;
-      // A parent_slug pointing at a component that isn't in the current
-      // filter (or was deleted with ON DELETE SET NULL mid-flight) must not
-      // vanish the child — orphans surface at root rather than disappearing.
+      // A parent_slug pointing at a component that isn't in the current filter
+      // (or was deleted with ON DELETE SET NULL mid-flight) must not vanish the
+      // child — orphans surface at root rather than disappearing.
       if (parent) parent.children.push(node);
       else roots.push(node);
     }
@@ -112,18 +163,20 @@ export function register(host) {
       <div>
         <div
           onClick={() => onSelect(node.slug)}
-          style={{ paddingLeft: `${8 + depth * 12}px` }}
-          className={`flex items-center gap-1.5 py-1 pr-2 rounded cursor-pointer text-[12px] ${
-            isSel ? 'bg-[var(--color-accent)]/15 text-[var(--color-accent)]'
-                  : 'hover:bg-white/5 text-[var(--color-text-primary)]'}`}
+          className="flex items-center gap-1 cursor-pointer"
+          style={{
+            paddingLeft: 6 + depth * 12, paddingRight: 6,
+            paddingTop: 3, paddingBottom: 3, borderRadius: 5,
+            fontSize: FS.row,
+            background: isSel ? 'rgba(88,166,255,.14)' : 'transparent',
+            color: isSel ? 'var(--color-accent)' : 'var(--color-text-primary)',
+          }}
         >
-          {node.children.length > 0 ? (
-            <span
-              onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
-              className="w-3 shrink-0 text-[var(--color-text-muted)]"
-            >{open ? '▾' : '▸'}</span>
-          ) : <span className="w-3 shrink-0" />}
-          <span className="truncate flex-1">{node.name}</span>
+          <span
+            onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
+            style={{ width: 11, flexShrink: 0, color: 'var(--color-text-muted)', fontSize: FS.label }}
+          >{node.children.length > 0 ? (open ? '▾' : '▸') : ''}</span>
+          <span className="truncate" style={{ flex: 1 }}>{node.name}</span>
           <Health value={node.health} />
         </div>
         {open && node.children.map((c) => (
@@ -188,48 +241,50 @@ export function register(host) {
 
     return (
       <div className="flex flex-col h-full min-h-0">
-        <div className="flex items-center gap-2 mb-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0" style={{ marginBottom: 8 }}>
           <button onClick={rescan}
-            className="text-[10.5px] px-2.5 py-1 rounded border border-[var(--color-accent)]/40 text-[var(--color-accent)]">
+            style={{ ...S.btn, color: 'var(--color-accent)', borderColor: 'rgba(88,166,255,.4)' }}>
             ⟳ Rescan discovery
           </button>
           <button onClick={() => setFlakyOnly(!flakyOnly)}
-            className={`text-[10.5px] px-2.5 py-1 rounded border border-[var(--color-border)] ${
-              flakyOnly ? 'text-amber-400' : 'text-[var(--color-text-muted)]'}`}>
+            style={{ ...S.btn, color: flakyOnly ? '#fbbf24' : 'var(--color-text-muted)' }}>
             ⚑ Flaky only
           </button>
-          <span className="ml-auto text-[10.5px] text-[var(--color-text-muted)]">
+          <span style={{ marginLeft: 'auto', fontSize: FS.label, color: 'var(--color-text-muted)' }}>
             {shown.length} test{shown.length === 1 ? '' : 's'}
           </span>
         </div>
 
         <div className="overflow-auto min-h-0 flex-1">
-          <table className="w-full text-[11.5px]">
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr className="text-left text-[10px] uppercase tracking-wide text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
-                <th className="py-1.5 px-2 w-6" />
-                <th className="py-1.5 px-2">Test file</th>
-                <th className="py-1.5 px-2">Kind</th>
-                <th className="py-1.5 px-2">Component</th>
-                <th className="py-1.5 px-2">Last run</th>
+              <tr>
+                <th style={{ ...S.th, width: 26 }} />
+                <th style={S.th}>Test file</th>
+                <th style={S.th}>Kind</th>
+                <th style={S.th}>Component</th>
+                <th style={S.th}>Last run</th>
               </tr>
             </thead>
             <tbody>
               {shown.map((t) => (
-                <tr key={t.file_path} className="border-b border-[var(--color-border)]/40">
-                  <td className="py-1.5 px-2">
+                <tr key={t.file_path}>
+                  <td style={S.td}>
                     <button onClick={() => runOne(t.file_path)} disabled={running[t.file_path]}
-                      title="Run this test" className="text-green-400 disabled:opacity-40">
+                      title="Run this test"
+                      style={{ color: '#4ade80', background: 'none', border: 0, cursor: 'pointer' }}>
                       {running[t.file_path] ? '…' : '▶'}
                     </button>
                   </td>
-                  <td className="py-1.5 px-2 font-mono text-[11px] text-[var(--color-text-primary)]">
+                  <td style={{ ...S.td, ...S.mono, color: 'var(--color-text-primary)' }}>
                     {t.file_path}
-                    {t.is_flaky && <span className="ml-1.5 text-amber-400" title={t.flaky_note || 'flaky'}>⚑</span>}
+                    {t.is_flaky && (
+                      <span style={{ marginLeft: 6, color: '#fbbf24' }} title={t.flaky_note || 'flaky'}>⚑</span>
+                    )}
                   </td>
-                  <td className="py-1.5 px-2 text-[var(--color-text-muted)]">{t.kind}</td>
-                  <td className="py-1.5 px-2 text-[var(--color-text-muted)]">{t.component_slug || '—'}</td>
-                  <td className="py-1.5 px-2"><Health value={t.last_run_status} /></td>
+                  <td style={{ ...S.td, color: 'var(--color-text-muted)' }}>{t.kind}</td>
+                  <td style={{ ...S.td, color: 'var(--color-text-muted)' }}>{t.component_slug || '—'}</td>
+                  <td style={S.td}><Health value={t.last_run_status} /></td>
                 </tr>
               ))}
             </tbody>
@@ -243,14 +298,22 @@ export function register(host) {
         </div>
 
         {output && (
-          <div className="shrink-0 mt-2 border-t border-[var(--color-border)] pt-2">
-            <div className="flex items-center gap-2 text-[11px] mb-1">
+          <div className="shrink-0" style={{
+            marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--color-border)',
+          }}>
+            <div className="flex items-center gap-2" style={{ marginBottom: 4 }}>
               <Health value={output.status} />
-              <span className="font-mono text-[10.5px] text-[var(--color-text-muted)]">{output.file_path}</span>
-              <button onClick={() => setOutput(null)} className="ml-auto text-[var(--color-text-muted)]">✕</button>
+              <span style={{ ...S.mono, color: 'var(--color-text-muted)' }}>{output.file_path}</span>
+              <button onClick={() => setOutput(null)}
+                style={{ marginLeft: 'auto', background: 'none', border: 0,
+                         color: 'var(--color-text-muted)', cursor: 'pointer' }}>✕</button>
             </div>
-            <pre className="text-[10px] leading-[1.45] max-h-40 overflow-auto whitespace-pre-wrap
-                            text-[var(--color-text-muted)] font-mono">{output.output}</pre>
+            <pre style={{
+              fontSize: FS.label, lineHeight: 1.45, maxHeight: 160, overflow: 'auto',
+              whiteSpace: 'pre-wrap', margin: 0,
+              color: 'var(--color-text-muted)',
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            }}>{output.output}</pre>
           </div>
         )}
       </div>
@@ -274,27 +337,32 @@ export function register(host) {
     if (rows.length === 0) return <Empty>No requirements documented for this component.</Empty>;
 
     return (
-      <div className="overflow-auto h-full space-y-2.5">
+      <div className="overflow-auto h-full">
         {rows.map((r) => (
-          <div key={r.id} className="border border-[var(--color-border)] rounded-lg p-3">
-            <div className="flex items-start gap-2 mb-1.5">
-              <span className="text-[12.5px] text-[var(--color-text-primary)] flex-1">{r.title}</span>
+          <div key={r.id} style={{
+            border: '1px solid var(--color-border)', borderRadius: 8,
+            padding: 10, marginBottom: 8,
+          }}>
+            <div className="flex items-start gap-2" style={{ marginBottom: 6 }}>
+              <span style={{ fontSize: FS.tab, flex: 1, color: 'var(--color-text-primary)' }}>{r.title}</span>
               <Health value={r.health} />
             </div>
-            <div className="text-[11px] leading-relaxed text-[var(--color-text-muted)] space-y-0.5">
-              <div><b className="text-[var(--color-text-primary)]">Given</b> {r.gherkin_given}</div>
-              <div><b className="text-[var(--color-text-primary)]">When</b> {r.gherkin_when}</div>
-              <div><b className="text-[var(--color-text-primary)]">Then</b> {r.gherkin_then}</div>
+            <div style={{ fontSize: FS.row, lineHeight: 1.65, color: 'var(--color-text-muted)' }}>
+              <div><b style={{ color: 'var(--color-text-primary)' }}>Given</b> {r.gherkin_given}</div>
+              <div><b style={{ color: 'var(--color-text-primary)' }}>When</b> {r.gherkin_when}</div>
+              <div><b style={{ color: 'var(--color-text-primary)' }}>Then</b> {r.gherkin_then}</div>
             </div>
-            <div className="mt-2 flex items-center gap-2 text-[10px] text-[var(--color-text-muted)]">
-              <span>intended: <code>{r.intended_status}</code></span>
+            <div className="flex items-center gap-2" style={{
+              marginTop: 8, fontSize: FS.label, color: 'var(--color-text-muted)',
+            }}>
+              <span>intended: <code style={S.mono}>{r.intended_status}</code></span>
               {r.kanban_url
                 ? <a href={r.kanban_url} target="_blank" rel="noreferrer"
-                     className="text-[var(--color-accent)]">Kanban card ↗</a>
+                     style={{ color: 'var(--color-accent)' }}>Kanban card ↗</a>
                 /* set_requirement_status refuses to move a requirement to
                    'implemented' without a card, so a missing link on an
                    implemented row is worth showing, not hiding. */
-                : <span className="text-amber-400/80">no Kanban card linked</span>}
+                : <span style={{ color: '#fbbf24' }}>no Kanban card linked</span>}
             </div>
           </div>
         ))}
@@ -318,22 +386,22 @@ export function register(host) {
 
     return (
       <div className="overflow-auto h-full">
-        <table className="w-full text-[11.5px]">
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            <tr className="text-left text-[10px] uppercase tracking-wide text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
-              <th className="py-1.5 px-2">Noted</th>
-              <th className="py-1.5 px-2">Component</th>
-              <th className="py-1.5 px-2">Description</th>
+            <tr>
+              <th style={S.th}>Noted</th>
+              <th style={S.th}>Component</th>
+              <th style={S.th}>Description</th>
             </tr>
           </thead>
           <tbody>
             {debt.map((d) => (
-              <tr key={d.id} className="border-b border-[var(--color-border)]/40">
-                <td className="py-1.5 px-2 text-[var(--color-text-muted)] whitespace-nowrap">
+              <tr key={d.id}>
+                <td style={{ ...S.td, color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>
                   {(d.noted_at || '').slice(0, 10)}
                 </td>
-                <td className="py-1.5 px-2 text-[var(--color-text-muted)]">{d.component_slug || '—'}</td>
-                <td className="py-1.5 px-2 text-[var(--color-text-primary)]">{d.description}</td>
+                <td style={{ ...S.td, color: 'var(--color-text-muted)' }}>{d.component_slug || '—'}</td>
+                <td style={{ ...S.td, color: 'var(--color-text-primary)' }}>{d.description}</td>
               </tr>
             ))}
           </tbody>
@@ -358,47 +426,55 @@ export function register(host) {
     if (!c) return <Empty>Loading…</Empty>;
 
     const Row = ({ k, v }) => (
-      <div className="flex gap-3 py-1 border-b border-[var(--color-border)]/40">
-        <span className="w-32 shrink-0 text-[10px] uppercase tracking-wide text-[var(--color-text-muted)] pt-0.5">{k}</span>
-        <span className="text-[11.5px] text-[var(--color-text-primary)]">{v}</span>
+      <div className="flex gap-3" style={{
+        padding: '4px 0', borderBottom: '1px solid var(--color-border)',
+      }}>
+        <span style={{
+          ...S.label, width: 118, flexShrink: 0,
+          color: 'var(--color-text-muted)', paddingTop: 2,
+        }}>{k}</span>
+        <span style={{ fontSize: FS.row, color: 'var(--color-text-primary)' }}>{v}</span>
       </div>
     );
 
     return (
       <div className="overflow-auto h-full">
-        <div className="flex items-center gap-2 mb-3">
-          <span className="text-[14px] text-[var(--color-text-primary)]">{c.name}</span>
+        <div className="flex items-center gap-2" style={{ marginBottom: 10 }}>
+          <span style={{ fontSize: FS.title, color: 'var(--color-text-primary)' }}>{c.name}</span>
           <Health value={c.health} />
         </div>
-        <Row k="slug" v={<code className="text-[11px]">{c.slug}</code>} />
+        <Row k="slug" v={<code style={S.mono}>{c.slug}</code>} />
         <Row k="repo" v={c.repo || '—'} />
         <Row k="layer" v={c.layer || '—'} />
         <Row k="technologies" v={(c.technologies || []).join(', ') || '—'} />
-        <Row k="test_base_path" v={<code className="text-[11px]">{c.test_base_path || '—'}</code>} />
-        <Row k="run_cmd" v={<code className="text-[11px]">{c.run_cmd || '—'}</code>} />
-        <Row k="test_cmd" v={<code className="text-[11px]">{c.test_cmd || '—'}</code>} />
+        <Row k="test_base_path" v={<code style={S.mono}>{c.test_base_path || '—'}</code>} />
+        <Row k="run_cmd" v={<code style={S.mono}>{c.run_cmd || '—'}</code>} />
+        <Row k="test_cmd" v={<code style={S.mono}>{c.test_cmd || '—'}</code>} />
         {c.description && (
-          <p className="mt-3 text-[11.5px] leading-relaxed text-[var(--color-text-muted)] whitespace-pre-wrap">
-            {c.description}
-          </p>
+          <p style={{
+            marginTop: 12, fontSize: FS.row, lineHeight: 1.6,
+            color: 'var(--color-text-muted)', whiteSpace: 'pre-wrap',
+          }}>{c.description}</p>
         )}
-        <div className="mt-4">
-          <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-muted)] mb-1">Connections</div>
+        <div style={{ marginTop: 14 }}>
+          <div style={{ ...S.label, color: 'var(--color-text-muted)', marginBottom: 4 }}>Connections</div>
           {(c.connections || []).length === 0
-            ? <div className="text-[11.5px] text-[var(--color-text-muted)]">none</div>
+            ? <div style={{ fontSize: FS.row, color: 'var(--color-text-muted)' }}>none</div>
             : (c.connections || []).map((k) => (
-                <div key={k.id} className="text-[11.5px] text-[var(--color-text-primary)]">
-                  <code className="text-[10.5px] text-[var(--color-accent)]">{k.kind}</code> → {k.to_slug}
-                  {k.description ? <span className="text-[var(--color-text-muted)]"> — {k.description}</span> : null}
+                <div key={k.id} style={{ fontSize: FS.row, color: 'var(--color-text-primary)' }}>
+                  <code style={{ ...S.mono, color: 'var(--color-accent)' }}>{k.kind}</code> → {k.to_slug}
+                  {k.description
+                    ? <span style={{ color: 'var(--color-text-muted)' }}> — {k.description}</span>
+                    : null}
                 </div>
               ))}
         </div>
-        <div className="mt-3">
-          <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-muted)] mb-1">MCP tools</div>
+        <div style={{ marginTop: 12 }}>
+          <div style={{ ...S.label, color: 'var(--color-text-muted)', marginBottom: 4 }}>MCP tools</div>
           {(c.tools || []).length === 0
-            ? <div className="text-[11.5px] text-[var(--color-text-muted)]">none exposed</div>
+            ? <div style={{ fontSize: FS.row, color: 'var(--color-text-muted)' }}>none exposed</div>
             : (c.tools || []).map((t) => (
-                <div key={t.id} className="text-[11.5px] font-mono text-[var(--color-text-primary)]">{t.name}</div>
+                <div key={t.id} style={{ ...S.mono, color: 'var(--color-text-primary)' }}>{t.name}</div>
               ))}
         </div>
       </div>
@@ -436,22 +512,27 @@ export function register(host) {
     }, [components, filter]);
 
     return (
-      <div className="flex h-full min-h-0 text-[var(--color-text-primary)]">
-        <div className="w-[240px] shrink-0 border-r border-[var(--color-border)] flex flex-col min-h-0">
-          <div className="p-2 shrink-0">
+      <div className="flex h-full min-h-0" style={{ color: 'var(--color-text-primary)' }}>
+        <div className="flex flex-col min-h-0" style={{
+          width: RAIL_WIDTH, flexShrink: 0, borderRight: '1px solid var(--color-border)',
+        }}>
+          <div className="shrink-0" style={{ padding: 8 }}>
             <input
               value={filter} onChange={(e) => setFilter(e.target.value)}
               placeholder="Filter components…"
-              className="w-full bg-transparent border border-[var(--color-border)] rounded px-2 py-1
-                         text-[11.5px] outline-none focus:border-[var(--color-accent)]/50"
+              style={{
+                width: '100%', background: 'transparent', outline: 'none',
+                border: '1px solid var(--color-border)', borderRadius: 6,
+                padding: '4px 7px', fontSize: FS.row, color: 'var(--color-text-primary)',
+              }}
             />
           </div>
-          <div className="overflow-auto flex-1 min-h-0 px-1 pb-2">
+          <div className="overflow-auto flex-1 min-h-0" style={{ padding: '0 6px 8px' }}>
             {error && <Empty>Couldn’t load — {error}</Empty>}
             {!components && !error && <Empty>Loading…</Empty>}
             {components && components.length === 0 && (
-              <Empty>No components registered yet. The catalog is managed through the
-                     <code className="mx-1">aw__architecture__*</code> MCP tools.</Empty>
+              <Empty>No components registered yet — the catalog is curated
+                     through the architecture MCP tools.</Empty>
             )}
             {tree.map((n) => (
               <TreeNode key={n.slug} node={n} depth={0} selected={selected} onSelect={setSelected} />
@@ -459,21 +540,29 @@ export function register(host) {
           </div>
         </div>
 
-        <div className="flex-1 flex flex-col min-w-0 min-h-0">
-          <div className="flex items-center gap-1 px-2 border-b border-[var(--color-border)] shrink-0">
+        <div className="flex flex-col min-w-0 min-h-0" style={{ flex: 1 }}>
+          <div className="flex items-center shrink-0" style={{
+            padding: '0 8px', borderBottom: '1px solid var(--color-border)',
+          }}>
             {TABS.map((t) => (
               <button key={t.id} onClick={() => setTab(t.id)}
-                className={`px-3 py-2 text-[12px] border-b-2 ${
-                  tab === t.id ? 'border-[var(--color-accent)] text-[var(--color-text-primary)]'
-                               : 'border-transparent text-[var(--color-text-muted)]'}`}>
+                style={{
+                  padding: '7px 11px', fontSize: FS.tab, background: 'none', cursor: 'pointer',
+                  border: 0, borderBottom: '2px solid',
+                  borderBottomColor: tab === t.id ? 'var(--color-accent)' : 'transparent',
+                  color: tab === t.id ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+                }}>
                 {t.label}
               </button>
             ))}
-            <span className="ml-auto pr-1 text-[10.5px] text-[var(--color-text-muted)]">
+            <span style={{
+              marginLeft: 'auto', paddingRight: 4, fontSize: FS.label,
+              color: 'var(--color-text-muted)',
+            }}>
               {busy ? 'scanning…' : (selected || 'all components')}
             </span>
           </div>
-          <div className="flex-1 min-h-0 p-3">
+          <div className="flex-1 min-h-0" style={{ padding: 10 }}>
             {tab === 'tests' && <TestsTab slug={selected} onBusy={(b) => { setBusy(b); if (!b) load(); }} />}
             {tab === 'requirements' && <RequirementsTab slug={selected} />}
             {tab === 'debt' && <DebtTab slug={selected} />}
@@ -484,21 +573,39 @@ export function register(host) {
     );
   }
 
+  // The same 3.5×3.5 muted stroke icon every other row in the Workspace
+  // popover uses (see aw-workspace-ui's WorkspaceNav.jsx) — a row without one
+  // sits an icon-width left of its neighbours and reads as unfinished. These
+  // three Tailwind classes are ones core itself ships, so they resolve.
+  // Stacked layers: the component tree is what this window is about.
+  function ArchitectureIcon() {
+    return (
+      <svg className="w-3.5 h-3.5 shrink-0 text-[var(--color-text-muted)]"
+           viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+           strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 2L2 7l10 5 10-5-10-5z" />
+        <path d="M2 17l10 5 10-5" />
+        <path d="M2 12l10 5 10-5" />
+      </svg>
+    );
+  }
+
   function ArchitectureNavEntry() {
     return (
       <button
         onClick={() => window.__awOpenAppWindow?.(WINDOW_ID, undefined, 'Architecture')}
-        className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-white/5 text-left"
+        className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white/[0.06] cursor-pointer text-left"
         title="Components, requirements, test traceability"
       >
-        <span className="text-[13px]">Architecture</span>
+        <ArchitectureIcon />
+        <span className="text-[13px] text-[var(--color-text-primary)]">Architecture</span>
       </button>
     );
   }
 
   host.registerWindow(WINDOW_ID, ArchitectureWindow);
-  // core.nav.workspace — the Workspace popover, which is exactly where the
-  // old "Tests" row lived. Putting Architecture there means the entry the user
+  // core.nav.workspace — the Workspace popover, which is exactly where the old
+  // "Tests" row lived. Putting Architecture there means the entry the user
   // reaches for is in the place muscle memory already points at, and the
   // manifest's contributes.windows entry is what makes __awOpenAppWindow
   // resolve architecture.main at all (without it the button opens nothing —
