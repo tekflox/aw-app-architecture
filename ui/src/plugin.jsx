@@ -76,6 +76,18 @@ const TABS = [
   { id: 'detail', label: 'Detail' },
 ];
 
+const ICON = {
+  // Unicode symbols (⟳ ▶ ⚑ ▾ ✕ ↗) render as tofu boxes here — the browser
+  // container's font stack has no glyph for them. Inline SVG doesn't care
+  // what fonts the image ships.
+  refresh: 'M23 4v6h-6 M1 20v-6h6 M3.51 9a9 9 0 0 1 14.85-3.36L23 10 M1 14l4.64 4.36A9 9 0 0 0 20.49 15',
+  flag: 'M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z M4 22v-7',
+  close: 'M18 6L6 18M6 6l12 12',
+  chevronDown: 'M6 9l6 6 6-6',
+  chevronRight: 'M9 18l6-6-6-6',
+  arrow: 'M5 12h14M13 6l6 6-6 6',
+};
+
 const S = {
   label: { fontSize: FS.label, textTransform: 'uppercase', letterSpacing: '.06em' },
   mono: { fontSize: FS.mono, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' },
@@ -120,6 +132,16 @@ export function register(host) {
       <span style={{ ...S.label, color: HEALTH_COLOR[v] || HEALTH_COLOR.unknown, fontWeight: 700 }}>
         {v.replace(/_/g, ' ')}
       </span>
+    );
+  }
+
+  function Icon({ d, size = 12, color = 'currentColor', fill = 'none', style }) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke={color}
+           strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+           style={{ flexShrink: 0, ...style }}>
+        <path d={d} />
+      </svg>
     );
   }
 
@@ -174,8 +196,11 @@ export function register(host) {
         >
           <span
             onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
-            style={{ width: 11, flexShrink: 0, color: 'var(--color-text-muted)', fontSize: FS.label }}
-          >{node.children.length > 0 ? (open ? '▾' : '▸') : ''}</span>
+            style={{ width: 12, flexShrink: 0, display: 'inline-flex',
+                     alignItems: 'center', color: 'var(--color-text-muted)' }}
+          >{node.children.length > 0
+              ? <Icon d={open ? ICON.chevronDown : ICON.chevronRight} size={11} />
+              : null}</span>
           <span className="truncate" style={{ flex: 1 }}>{node.name}</span>
           <Health value={node.health} />
         </div>
@@ -243,12 +268,14 @@ export function register(host) {
       <div className="flex flex-col h-full min-h-0">
         <div className="flex items-center gap-2 shrink-0" style={{ marginBottom: 8 }}>
           <button onClick={rescan}
-            style={{ ...S.btn, color: 'var(--color-accent)', borderColor: 'rgba(88,166,255,.4)' }}>
-            ⟳ Rescan discovery
+            style={{ ...S.btn, color: 'var(--color-accent)', borderColor: 'rgba(88,166,255,.4)',
+                     display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <Icon d={ICON.refresh} size={11} /> Rescan discovery
           </button>
           <button onClick={() => setFlakyOnly(!flakyOnly)}
-            style={{ ...S.btn, color: flakyOnly ? '#fbbf24' : 'var(--color-text-muted)' }}>
-            ⚑ Flaky only
+            style={{ ...S.btn, color: flakyOnly ? '#fbbf24' : 'var(--color-text-muted)',
+                     display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <Icon d={ICON.flag} size={11} /> Flaky only
           </button>
           <span style={{ marginLeft: 'auto', fontSize: FS.label, color: 'var(--color-text-muted)' }}>
             {shown.length} test{shown.length === 1 ? '' : 's'}
@@ -256,14 +283,14 @@ export function register(host) {
         </div>
 
         <div className="overflow-auto min-h-0 flex-1">
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
             <thead>
               <tr>
                 <th style={{ ...S.th, width: 26 }} />
                 <th style={S.th}>Test file</th>
-                <th style={S.th}>Kind</th>
-                <th style={S.th}>Component</th>
-                <th style={S.th}>Last run</th>
+                <th style={{ ...S.th, width: 78 }}>Kind</th>
+                <th style={{ ...S.th, width: 120 }}>Component</th>
+                <th style={{ ...S.th, width: 84 }}>Last run</th>
               </tr>
             </thead>
             <tbody>
@@ -272,19 +299,30 @@ export function register(host) {
                   <td style={S.td}>
                     <button onClick={() => runOne(t.file_path)} disabled={running[t.file_path]}
                       title="Run this test"
-                      style={{ color: '#4ade80', background: 'none', border: 0, cursor: 'pointer' }}>
-                      {running[t.file_path] ? '…' : '▶'}
+                      style={{ color: '#4ade80', background: 'none', border: 0,
+                               cursor: 'pointer', padding: 0, lineHeight: 0 }}>
+                      {running[t.file_path]
+                        ? <span style={{ fontSize: FS.label }}>…</span>
+                        : <Icon d="M8 5v14l11-7z" size={12} fill="currentColor" color="none" />}
                     </button>
                   </td>
-                  <td style={{ ...S.td, ...S.mono, color: 'var(--color-text-primary)' }}>
+                  <td style={{ ...S.td, ...S.mono, color: 'var(--color-text-primary)',
+                               overflow: 'hidden', textOverflow: 'ellipsis',
+                               whiteSpace: 'nowrap' }}
+                      title={t.file_path}>
                     {t.file_path}
                     {t.is_flaky && (
-                      <span style={{ marginLeft: 6, color: '#fbbf24' }} title={t.flaky_note || 'flaky'}>⚑</span>
+                      <Icon d={ICON.flag} size={10} color="#fbbf24"
+                            style={{ marginLeft: 5, verticalAlign: '-1px' }} />
                     )}
                   </td>
-                  <td style={{ ...S.td, color: 'var(--color-text-muted)' }}>{t.kind}</td>
-                  <td style={{ ...S.td, color: 'var(--color-text-muted)' }}>{t.component_slug || '—'}</td>
-                  <td style={S.td}><Health value={t.last_run_status} /></td>
+                  <td style={{ ...S.td, color: 'var(--color-text-muted)',
+                               whiteSpace: 'nowrap' }}>{t.kind}</td>
+                  <td style={{ ...S.td, color: 'var(--color-text-muted)', overflow: 'hidden',
+                               textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                      title={t.component_slug || ''}>{t.component_slug || '—'}</td>
+                  <td style={{ ...S.td, whiteSpace: 'nowrap' }}>
+                    <Health value={t.last_run_status} /></td>
                 </tr>
               ))}
             </tbody>
@@ -305,8 +343,9 @@ export function register(host) {
               <Health value={output.status} />
               <span style={{ ...S.mono, color: 'var(--color-text-muted)' }}>{output.file_path}</span>
               <button onClick={() => setOutput(null)}
-                style={{ marginLeft: 'auto', background: 'none', border: 0,
-                         color: 'var(--color-text-muted)', cursor: 'pointer' }}>✕</button>
+                style={{ marginLeft: 'auto', background: 'none', border: 0, padding: 0,
+                         lineHeight: 0, color: 'var(--color-text-muted)', cursor: 'pointer' }}>
+                <Icon d={ICON.close} size={11} /></button>
             </div>
             <pre style={{
               fontSize: FS.label, lineHeight: 1.45, maxHeight: 160, overflow: 'auto',
@@ -358,7 +397,7 @@ export function register(host) {
               <span>intended: <code style={S.mono}>{r.intended_status}</code></span>
               {r.kanban_url
                 ? <a href={r.kanban_url} target="_blank" rel="noreferrer"
-                     style={{ color: 'var(--color-accent)' }}>Kanban card ↗</a>
+                     style={{ color: 'var(--color-accent)' }}>Kanban card</a>
                 /* set_requirement_status refuses to move a requirement to
                    'implemented' without a card, so a missing link on an
                    implemented row is worth showing, not hiding. */
@@ -462,7 +501,9 @@ export function register(host) {
             ? <div style={{ fontSize: FS.row, color: 'var(--color-text-muted)' }}>none</div>
             : (c.connections || []).map((k) => (
                 <div key={k.id} style={{ fontSize: FS.row, color: 'var(--color-text-primary)' }}>
-                  <code style={{ ...S.mono, color: 'var(--color-accent)' }}>{k.kind}</code> → {k.to_slug}
+                  <code style={{ ...S.mono, color: 'var(--color-accent)' }}>{k.kind}</code>
+                  <Icon d={ICON.arrow} size={11} style={{ margin: '0 4px', verticalAlign: '-2px' }} />
+                  {k.to_slug}
                   {k.description
                     ? <span style={{ color: 'var(--color-text-muted)' }}> — {k.description}</span>
                     : null}
