@@ -220,3 +220,39 @@ class TestNoCoreImports:
             source = f.read()
         offenders = re.findall(r"^\s*(?:from|import)\s+src[\s.]", source, re.M)
         assert not offenders, f"{module} imports core: {offenders}"
+
+
+class TestMcpSurface:
+    """The 40 tools are the primary way the catalog is managed — the UI is a
+    view onto it, not the editor. If the manifest doesn't declare them,
+    aw-mcp-gateway serves none of them and every agent that would curate the
+    namespace silently has nothing to call: the app installs green, doctor is
+    happy, and the tools just aren't there. That exact shape (an app's whole
+    MCP surface missing while everything reports healthy) is a documented
+    failure mode of this workspace, so it gets a test."""
+
+    def _manifest(self):
+        with open(os.path.join(REPO, "aw-app.json")) as f:
+            return json.load(f)
+
+    def _declared_tool_names(self):
+        source = open(os.path.join(REPO, "architecture_app", "mcp_tools.py")).read()
+        block = source[source.index("TOOLS = ["):]
+        names = re.findall(r'\{"name": "([a-z_]+)"', block)
+        return list(dict.fromkeys(names))
+
+    def test_manifest_declares_every_tool_the_module_defines(self):
+        provides = self._manifest()["contributes"]["mcp"]["provides"]
+        assert set(provides) == set(self._declared_tool_names()), (
+            f"manifest/code drift: only_in_manifest="
+            f"{set(provides) - set(self._declared_tool_names())}, "
+            f"only_in_code={set(self._declared_tool_names()) - set(provides)}"
+        )
+
+    def test_every_declared_tool_is_dispatchable(self):
+        """A tool listed in TOOLS but missing from _dispatch answers
+        'Unknown tool' at call time — advertised and dead."""
+        source = open(os.path.join(REPO, "architecture_app", "mcp_tools.py")).read()
+        dispatch = source[source.index("def _dispatch("):]
+        for name in self._declared_tool_names():
+            assert f'tool == "{name}"' in dispatch, f"{name} is advertised but not dispatched"
