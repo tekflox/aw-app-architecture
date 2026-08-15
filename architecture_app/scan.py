@@ -147,14 +147,15 @@ def scan_workspace() -> dict:
 
     # ---- infrastructure + the workspace itself -----------------------------
     for infra in _INFRA:
-        put(**infra)
+        if put(**infra):
+            created_components += 1
 
-    put(slug="aw-workspace", name="aw-workspace", repo="aw-workspace",
-        layer="platform",
-        description="The decoupled workspace host: app runtime, capability "
-                    "system, CLI, REST/WS API.",
-        technologies=["python", "fastapi", "sqlalchemy"])
-    created_components += 1
+    if put(slug="aw-workspace", name="aw-workspace", repo="aw-workspace",
+           layer="platform",
+           description="The decoupled workspace host: app runtime, capability "
+                       "system, CLI, REST/WS API.",
+           technologies=["python", "fastapi", "sqlalchemy"]):
+        created_components += 1
 
     for slug, name, pkg, layer, desc in _CORE_SUBPACKAGES:
         src = os.path.join(root, "src", pkg)
@@ -164,29 +165,41 @@ def scan_workspace() -> dict:
         integration = os.path.join(root, "src", "tests", "integration", pkg)
         paths = [os.path.relpath(p, root) for p in (tests, integration)
                  if os.path.isdir(p)]
-        put(slug=slug, name=name, parent_slug="aw-workspace",
-            repo="aw-workspace", layer=layer, description=desc,
-            technologies=["python"],
-            test_base_path=",".join(paths) or None)
-        created_components += 1
+        if put(slug=slug, name=name, parent_slug="aw-workspace",
+               repo="aw-workspace", layer=layer, description=desc,
+               technologies=["python"],
+               test_base_path=",".join(paths) or None):
+            created_components += 1
 
-    # ---- one component per installed app ----------------------------------
+    # ---- pass 1: every component, before any edge -------------------------
+    #
+    # Two passes, not one. `create_connection` resolves both endpoints by slug
+    # and raises if either is missing, so a single interleaved pass drops every
+    # edge that points *forward* — an app declaring a dependency on one the
+    # loop hasn't reached yet. That made the first run land 44 edges and the
+    # second 49: the scan converged, but only by being run twice, which is the
+    # kind of "works if you do it again" that hides in a nightly job.
+    pending: list[tuple[str, dict, str]] = []
     for repo_dir in _repo_dirs():
         manifest = _read_manifest(repo_dir)
         if not manifest or not manifest.get("id"):
             continue
-        app_id = manifest["id"]
-        slug = f"aw-app-{app_id}"
+        slug = f"aw-app-{manifest['id']}"
+        if put(slug=slug, name=manifest.get("name") or manifest["id"],
+               repo=os.path.basename(repo_dir),
+               layer=_TIER_LAYER.get(manifest.get("tier"), "app"),
+               description=manifest.get("description"),
+               technologies=_tech(manifest, repo_dir),
+               test_base_path=_test_base_path(repo_dir)):
+            created_components += 1
+        # Edges and tools are derived even for a curated component: the
+        # provenance rule protects prose someone wrote, not the topology, which
+        # is a fact restated from the manifest either way.
+        pending.append((slug, manifest, repo_dir))
+
+    # ---- pass 2: edges + tool rows, with every endpoint now present --------
+    for slug, manifest, _repo_dir in pending:
         contributes = manifest.get("contributes") or {}
-
-        put(slug=slug, name=manifest.get("name") or app_id,
-            repo=os.path.basename(repo_dir),
-            layer=_TIER_LAYER.get(manifest.get("tier"), "app"),
-            description=manifest.get("description"),
-            technologies=_tech(manifest, repo_dir),
-            test_base_path=_test_base_path(repo_dir))
-        created_components += 1
-
         perms = manifest.get("permissions") or []
         edges = []
         if "db:own-tables" in perms:
@@ -206,11 +219,11 @@ def scan_workspace() -> dict:
                 db.create_connection(slug, to_slug, kind, desc)
                 connections += 1
             except Exception as exc:
-                # A dependency on an app that isn't checked out here has no
-                # component to point at. Not an error: skip the edge, keep the
-                # component. Refusing the whole scan over one missing target
-                # would make the catalog hostage to which repos happen to be
-                # cloned.
+                # A dependency on an app that isn't checked out here still has
+                # no component to point at, and that's legitimate — skip the
+                # edge, keep the component. Refusing the whole scan over one
+                # missing target would make the catalog hostage to which repos
+                # happen to be cloned.
                 _log.debug("scan: connection %s -> %s skipped: %s", slug, to_slug, exc)
 
         for tool in (contributes.get("mcp") or {}).get("provides") or []:

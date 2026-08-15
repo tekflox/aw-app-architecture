@@ -504,3 +504,28 @@ class TestScanTaskShape:
 
     def test_scan_task_names_an_agent(self):
         assert self._tasks()["Architecture Workspace Scan"]["agent_slug"]
+
+    def test_components_are_created_before_any_edge(self):
+        """create_connection resolves both endpoints by slug and raises if one
+        is missing, so an interleaved single pass silently drops every
+        forward-referencing dependency edge — the scan then converges only on
+        the SECOND run. Observed live: 44 edges, then 49."""
+        source = open(os.path.join(REPO, "architecture_app", "scan.py")).read()
+        body = source[source.index("def scan_workspace("):]
+        assert body.index("pass 1") < body.index("pass 2")
+        # every edge write happens after the component loop has finished
+        assert body.index("pending.append(") < body.index("db.create_connection(")
+
+    def test_the_summary_counts_only_what_was_written(self):
+        """`created_components += 1` outside the `if put(...)` reported writes
+        that the provenance rule had just refused — the scan claimed 33 while
+        writing 29."""
+        source = open(os.path.join(REPO, "architecture_app", "scan.py")).read()
+        body = source[source.index("def scan_workspace("):]
+        for line_no, line in enumerate(body.splitlines()):
+            if "created_components += 1" in line:
+                indent = len(line) - len(line.lstrip())
+                prev = [l for l in body.splitlines()[:line_no] if l.strip()][-1]
+                assert "put(" in prev or "if put" in prev or indent > 4, (
+                    f"unconditional increment: {line!r}"
+                )
