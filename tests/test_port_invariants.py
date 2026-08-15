@@ -136,11 +136,11 @@ class TestManifest:
         assert "src.libs" not in task["command"]
         assert task["command"].startswith("aw-workspace-cli architecture")
 
-    def test_seeded_task_is_disabled(self):
-        """A schedule that starts firing on install is a surprise."""
-        with open(os.path.join(REPO, "aw-app.json")) as f:
-            manifest = json.load(f)
-        assert manifest["contributes"]["tasks"][0]["enabled"] is False
+    # NOTE: `enabled` used to be asserted False here, on the framework's
+    # default ("a task that starts firing the moment an app is installed is a
+    # surprise"). It's now True, deliberately — see
+    # TestSeededTaskShape.test_enabled for the reasoning. Asserted there rather
+    # than deleted, so flipping it back is still a decision someone makes.
 
     def test_agentic_output_task_names_an_agent(self):
         """Core's manifest validator requires `agent_slug` on `agentic_output`,
@@ -317,3 +317,67 @@ class TestBundleOnlyUsesClassesCoreShips:
         has to provide."""
         source = open(os.path.join(REPO, "ui", "src", "plugin.jsx")).read()
         assert "width: RAIL_WIDTH" in source
+
+
+class TestManifestMatchesTheCode:
+    """A manifest that advertises something the code doesn't do is worse than
+    one that advertises nothing — the user sets the knob and nothing changes."""
+
+    def _manifest(self):
+        with open(os.path.join(REPO, "aw-app.json")) as f:
+            return json.load(f)
+
+    def test_every_config_key_is_read_somewhere(self):
+        """`testcase_timeout_seconds` shipped in config_schema for four
+        versions while run_testcase used its own default — the setting was
+        editable, persisted, and inert."""
+        props = self._manifest().get("config_schema", {}).get("properties", {})
+        source = "".join(
+            open(os.path.join(REPO, "architecture_app", f)).read()
+            for f in os.listdir(os.path.join(REPO, "architecture_app"))
+            if f.endswith(".py")
+        )
+        for key in props:
+            assert key in source, f"config_schema declares {key!r} but no module reads it"
+
+    def test_declared_icon(self):
+        """Without one the Apps grid renders a generic tile."""
+        assert self._manifest().get("icon")
+
+
+class TestSeededTaskShape:
+    """The ported task ran `.venv/aw/bin/python -m src.libs.architecture_discovery`
+    against /opt/agentic-workspace — an interpreter, a module and a directory
+    that don't exist in this workspace. It sat disabled for that reason. These
+    pin the shape of the replacement so it can't regress into the same thing.
+    """
+
+    def _task(self):
+        with open(os.path.join(REPO, "aw-app.json")) as f:
+            return json.load(f)["contributes"]["tasks"][0]
+
+    def test_command_targets_this_workspace(self):
+        cmd = self._task()["command"]
+        for dead in ("/opt/agentic-workspace", ".venv/aw", "src.libs"):
+            assert dead not in cmd, f"{dead} does not exist here"
+        assert cmd == "aw-workspace-cli architecture discover"
+
+    def test_keeps_the_cadence_the_ported_task_ran_at(self):
+        """*/30 is what the monolith's version ran. Discovery is what keeps the
+        Tests view current as tests are added; a daily scan leaves the matrix
+        stale for the whole working day."""
+        assert self._task()["schedules"] == [{"kind": "cron", "expr": "*/30 * * * *"}]
+
+    def test_enabled(self):
+        """Seeded tasks default disabled so an install doesn't surprise you.
+        This is the documented exception: without the scan the Tests view only
+        populates when someone clicks Rescan, which is the app not working
+        rather than a preference. Deliberate — assert it so a later edit to
+        `false` is a decision, not a drift."""
+        assert self._task()["enabled"] is True
+
+    def test_the_cli_subcommand_it_calls_exists(self):
+        """The command is a string in JSON; nothing else checks it resolves."""
+        source = open(os.path.join(REPO, "commands", "architecture.py")).read()
+        assert 'COMMAND = "architecture"' in source
+        assert 'sub == "discover"' in source

@@ -55,8 +55,14 @@ class _RunTestcaseBody(BaseModel):
     file_path: str
 
 
-def build_routes() -> FastAPI:
-    """Mode-agnostic factory — called exactly once per mode."""
+def build_routes(config: dict | None = None) -> FastAPI:
+    """Mode-agnostic factory — called exactly once per mode.
+
+    ``config`` is the app's ``ctx.config`` (``config_schema`` in the manifest).
+    Threaded in rather than read globally so standalone mode can pass its own,
+    and so a knob that isn't wired here is obvious at the call site.
+    """
+    config = config or {}
     app = FastAPI(title="architecture")
 
     # ---- catalog reads ----------------------------------------------------
@@ -108,15 +114,16 @@ def build_routes() -> FastAPI:
 
     @app.post("/testcases/run")
     async def run_testcase_route(body: _RunTestcaseBody):
-        # Runs a real pytest subprocess (up to 300s) — must not block the
-        # shared workspace event loop for everyone else while it runs.
+        # Runs a real pytest subprocess — must not block the shared workspace
+        # event loop for everyone else while it runs.
         #
         # NOTE: the tunnel edge cuts requests at ~30s, so a slow suite will
         # look like "502 workspace offline" to a browser coming in over the
         # tunnel even though the run completes server-side and records its
         # result. The Tests view treats a failed fetch as "unknown, refresh
         # to see the recorded status" rather than as a test failure.
-        return await run_in_threadpool(run_testcase, body.file_path)
+        timeout = int(config.get("testcase_timeout_seconds") or 300)
+        return await run_in_threadpool(run_testcase, body.file_path, timeout)
 
     @app.post("/discovery/run")
     async def run_discovery_route():

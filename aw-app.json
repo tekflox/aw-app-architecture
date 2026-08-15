@@ -7,6 +7,7 @@
   "tier": "inprocess",
   "requires_ui_refresh": true,
   "publisher": "TekFlox",
+  "icon": "layers",
   "category": "Workspace",
   "resource_estimate": {
     "cpu": "low",
@@ -102,11 +103,11 @@
         "prompt": "`aw-workspace-cli architecture discover` just exited non-zero. That means at least one component's `test_base_path` points at a directory that no longer exists \u2014 the scan ran, but that component's tests silently stopped being discovered, so its traceability matrix is now stale rather than empty. Read the output above, name which components are affected and what the paths were, and say whether the directory moved (the path needs updating via update_component) or the component is gone (the row needs deleting). Do not change anything.",
         "schedules": [
           {
-            "kind": "daily",
-            "time": "04:30"
+            "kind": "cron",
+            "expr": "*/30 * * * *"
           }
         ],
-        "enabled": false
+        "enabled": true
       }
     ]
   },

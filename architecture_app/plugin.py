@@ -46,7 +46,7 @@ class ArchitectureAppPlugin:
                 "data call will fail until this is resolved: %s", exc,
             )
 
-        ctx.routes.register(routes_mod.build_routes())
+        ctx.routes.register(routes_mod.build_routes(getattr(ctx, "config", {}) or {}))
 
         # Discoverable by aw-mcp-gateway's app-scan — see self_register.py for
         # why the manifest's contributes.mcp block is NOT what registers the
