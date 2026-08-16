@@ -648,20 +648,32 @@ class TestDocsLiveWithTheirRepo:
     tree is orphaned the moment the app is removed, and then describes
     something that no longer exists."""
 
-    def test_app_component_routes_to_its_own_repo(self):
-        from architecture_app import md_export
-        d = md_export.dir_for_component({"repo": "aw-app-architecture"})
-        assert d.endswith("repos/aw-app-architecture/docs/architecture")
+    # A fake workspace tree, not this machine's. The first cut of these asserted
+    # against the real repos/ dir and passed locally while failing in CI, where
+    # nothing is checked out — a test that only passes where it was written.
 
-    def test_generic_component_stays_in_the_workspace(self):
+    @pytest.fixture()
+    def fake_ws(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("AW_WORKSPACE_CONTAINER_DIR", str(tmp_path))
+        (tmp_path / "repos" / "aw-app-something").mkdir(parents=True)
+        return tmp_path
+
+    def test_app_component_routes_to_its_own_repo(self, fake_ws):
         from architecture_app import md_export
-        for comp in ({"repo": None}, {"repo": "aw-workspace"}, {}):
+        d = md_export.dir_for_component({"repo": "aw-app-something"})
+        assert d == str(fake_ws / "repos" / "aw-app-something" / "docs" / "architecture")
+
+    def test_generic_component_stays_in_the_workspace(self, fake_ws):
+        from architecture_app import md_export
+        for comp in ({"repo": None}, {"repo": "aw-workspace"}, {}, None):
             assert md_export.dir_for_component(comp) == md_export.arch_dir()
 
-    def test_unchecked_out_repo_falls_back_rather_than_failing(self):
+    def test_unchecked_out_repo_falls_back_rather_than_failing(self, fake_ws):
+        """A doc in a slightly odd place beats no doc — and beats a crash in
+        the nightly regeneration."""
         from architecture_app import md_export
-        d = md_export.dir_for_component({"repo": "definitely-not-cloned-here"})
-        assert d == md_export.arch_dir()
+        assert md_export.dir_for_component(
+            {"repo": "definitely-not-cloned-here"}) == md_export.arch_dir()
 
     def test_prune_only_removes_generated_files(self):
         """Docs now land in repos that also hold hand-written ADRs. Deleting
