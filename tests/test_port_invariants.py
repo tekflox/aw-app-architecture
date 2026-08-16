@@ -551,3 +551,22 @@ class TestScanTaskShape:
         source = open(os.path.join(REPO, "architecture_app", "scan.py")).read()
         fn = source[source.index("def _detect_tech("):source.index("def _plain_test_paths(")]
         assert "os.walk" not in fn
+
+
+class TestDeclaresWhatItTouches:
+    def _manifest(self):
+        with open(os.path.join(REPO, "aw-app.json")) as f:
+            return json.load(f)
+
+    def test_declares_fs_workspace_read(self):
+        """scan.py walks repos/, discovery walks every test_base_path, and
+        md_export writes into docs/architecture/ — all outside this app's own
+        data dir. Tier-1 runs in-process so nothing physically stopped it, but
+        the manifest was not a description of what the app touches."""
+        assert "fs:workspace-read" in self._manifest()["permissions"]
+
+    def test_declares_the_core_version_it_needs(self):
+        """store.bind() hand-rolls this check because the manifest had no way
+        to say it. It does now — the guard stays as the runtime backstop, the
+        manifest stops install on an old workspace in the first place."""
+        assert self._manifest()["runtime"]["requires_workspace"]
