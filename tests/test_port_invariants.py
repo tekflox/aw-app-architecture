@@ -558,22 +558,18 @@ class TestDeclaresWhatItTouches:
         with open(os.path.join(REPO, "aw-app.json")) as f:
             return json.load(f)
 
-    def test_does_not_declare_a_capability_this_workspace_cannot_grant(self):
-        """`fs:workspace-read` was added to core on 2026-08-16 and belongs in
-        this manifest — scan.py walks repos/, discovery walks every
-        test_base_path, md_export writes docs/architecture/, none of it under
-        the app's own data dir.
+    def test_declares_fs_workspace_read(self):
+        """scan.py walks repos/, discovery walks every test_base_path and
+        md_export writes docs/architecture/ — none of it under this app's own
+        data dir, so the manifest was not a description of what the app
+        touches.
 
-        It is NOT declared yet, deliberately. The running workspace validates
-        permissions against the capabilities.py it loaded at boot, and the
-        cloud registry against aw-backend's mirror, so declaring it before BOTH
-        have shipped makes the install fail — and `--update` is uninstall+
-        install, so the failure takes the app down rather than leaving the old
-        version running. That happened once; this test is the reminder.
-
-        Re-add it (and flip this assertion) after the workspace restarts on
-        >= the release carrying the capability and aw-backend is deployed."""
-        assert "fs:workspace-read" not in self._manifest()["permissions"]
+        Declaring it is only safe once BOTH validators ship the capability:
+        the running workspace (>= v0.1.64) and aw-backend's mirror, which the
+        cloud registry grants from. Declaring it early once took the app
+        offline — `marketplace --update` is uninstall+install, so a refused
+        install leaves nothing running. Both shipped 2026-08-16."""
+        assert "fs:workspace-read" in self._manifest()["permissions"]
 
     def test_declares_the_core_version_it_needs(self):
         """store.bind() hand-rolls this check because the manifest had no way
