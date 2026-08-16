@@ -55,11 +55,19 @@ def _component_command(testcase: dict, file_path: str) -> str | None:
     return f"{template} {file_path}"
 
 
-#: pytest's documented exit codes. 1 means tests ran and failed — real signal.
-#: 4 (usage error) and 5 (nothing collected) mean the suite never executed, and
-#: recording those as "fail" states something false about code that may be
-#: perfectly fine.
-_PYTEST_NOT_A_RESULT = {4, 5}
+#: pytest exit codes that mean NO VERDICT WAS PRODUCED, as opposed to 1, which
+#: means tests ran and failed — the only one that is real signal about the code.
+#:
+#:   2  collection error (measured: an ImportError in a test module exits 2)
+#:   4  usage error
+#:   5  nothing collected
+#:
+#: 2 is also what pytest returns on a user interrupt, so it is not exclusively
+#: "could not collect" — but every meaning of 2 is still "no result", which is
+#: what `unknown` records. aw-app-mini-browser fails to collect here purely
+#: because this container lacks its `mcp` dependency; calling that a broken
+#: test would be a false negative on a suite that is probably green in CI.
+_PYTEST_NOT_A_RESULT = {2, 4, 5}
 
 
 def _classify(returncode: int, command: str) -> str:

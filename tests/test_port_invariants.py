@@ -727,8 +727,12 @@ class TestExitCodeClassification:
         assert _classify(1, "python -m pytest x.py") == "fail"
 
     def test_pytest_collection_errors_are_unknown_whatever_supplied_the_command(self):
+        """2 is what a test module's ImportError actually exits with (measured
+        on aw-app-mini-browser, which needs an `mcp` package this container
+        doesn't have). Marking that "fail" is a false negative on a suite that
+        is probably green wherever its deps exist."""
         from architecture_app.test_runner import _classify
-        for rc in (4, 5):
+        for rc in (2, 4, 5):
             assert _classify(rc, "cd repos/x && python3 -m pytest y.py -q") == "unknown"
             assert _classify(rc, "python -m pytest y.py") == "unknown"
 
