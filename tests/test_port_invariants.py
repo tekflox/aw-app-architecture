@@ -708,3 +708,37 @@ class TestUnknownPathIsNotAServerError:
         source = open(os.path.join(REPO, "architecture_app", "md_export.py")).read()
         fn = source[source.index("def regenerate_all("):]
         assert "dir_for_component(components.get(slug)) == d" in fn
+
+
+class TestExitCodeClassification:
+    """pytest exit 4 (usage) and 5 (nothing collected) mean the suite never
+    ran. Recording those as `fail` states something false about code that may
+    be perfectly fine — and the nuance used to apply only to the built-in
+    fallback, so any component with its own test_cmd got a red mark instead.
+    Seen live on aw-app-mini-browser ("ERROR collecting test session") and
+    aw-app-crispal ("1 skipped")."""
+
+    def test_zero_is_passing(self):
+        from architecture_app.test_runner import _classify
+        assert _classify(0, "anything") == "passing"
+
+    def test_pytest_one_is_a_real_failure(self):
+        from architecture_app.test_runner import _classify
+        assert _classify(1, "python -m pytest x.py") == "fail"
+
+    def test_pytest_collection_errors_are_unknown_whatever_supplied_the_command(self):
+        from architecture_app.test_runner import _classify
+        for rc in (4, 5):
+            assert _classify(rc, "cd repos/x && python3 -m pytest y.py -q") == "unknown"
+            assert _classify(rc, "python -m pytest y.py") == "unknown"
+
+    def test_a_non_pytest_runner_keeps_plain_semantics(self):
+        """No claim is made about another runner's exit codes — anything
+        non-zero is a failure until someone documents otherwise."""
+        from architecture_app.test_runner import _classify
+        assert _classify(5, "xcodebuild test -scheme Watch") == "fail"
+
+    def test_list_components_projects_test_cmd(self):
+        source = open(os.path.join(REPO, "architecture_app", "store.py")).read()
+        listing = source[source.index("def list_components("):source.index("def create_requirement(")]
+        assert "Component.test_cmd" in listing

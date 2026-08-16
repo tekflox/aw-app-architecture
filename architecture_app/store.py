@@ -657,6 +657,11 @@ def list_components(repo: str | None = None, layer: str | None = None) -> list[d
             # person has taken over, and skips them (see scan.py). It was a
             # write-only column until then.
             Component.edited_by,
+            # Projected because a caller needs to know whether a component can
+            # be RUN, not just that it exists. Its absence made an audit of
+            # "which components still lack a test command" answer "all of
+            # them", including the seven that had one.
+            Component.test_cmd,
             VComponentHealth.health,
         )
         .outerjoin(parent, parent.id == Component.parent_id)

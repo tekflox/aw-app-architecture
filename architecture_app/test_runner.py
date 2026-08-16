@@ -55,6 +55,33 @@ def _component_command(testcase: dict, file_path: str) -> str | None:
     return f"{template} {file_path}"
 
 
+#: pytest's documented exit codes. 1 means tests ran and failed — real signal.
+#: 4 (usage error) and 5 (nothing collected) mean the suite never executed, and
+#: recording those as "fail" states something false about code that may be
+#: perfectly fine.
+_PYTEST_NOT_A_RESULT = {4, 5}
+
+
+def _classify(returncode: int, command: str) -> str:
+    """Turn an exit code into passing / fail / unknown.
+
+    The pytest exit-code nuance used to apply ONLY to the built-in fallback:
+    any non-zero from an explicit run_command was recorded as "fail". So a
+    component whose per-repo test_cmd hit a collection error got a red mark on
+    a test that never ran — observed on aw-app-mini-browser ("ERROR collecting
+    test session") and aw-app-crispal ("1 skipped"). Both read as broken code.
+
+    Whether the command came from the testcase, its component, or the fallback
+    has nothing to do with how pytest reports itself, so the interpretation
+    follows the RUNNER, not the source of the string.
+    """
+    if returncode == 0:
+        return "passing"
+    if "pytest" in command and returncode in _PYTEST_NOT_A_RESULT:
+        return "unknown"
+    return "fail"
+
+
 def run_testcase(file_path: str, timeout: int = 300) -> dict:
     """Run one test case, record last_run_status/at, return the outcome plus
     captured console output for display.
@@ -113,12 +140,7 @@ def run_testcase(file_path: str, timeout: int = 300) -> dict:
         proc = subprocess.run(
             cmd, shell=shell, cwd=root, capture_output=True, text=True, timeout=timeout,
         )
-        if proc.returncode == 0:
-            status = "passing"
-        elif not run_command and proc.returncode in (4, 5):  # pytest usage/collection error
-            status = "unknown"
-        else:
-            status = "fail"
+        status = _classify(proc.returncode, cmd if isinstance(cmd, str) else " ".join(cmd))
         output = (proc.stdout or "") + (proc.stderr or "")
     except subprocess.TimeoutExpired:
         status, output = "fail", f"timeout after {timeout}s"
