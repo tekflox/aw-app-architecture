@@ -36,12 +36,38 @@ from . import store as db
 _log = logging.getLogger(__name__)
 
 
+def workspace_root() -> str:
+    """Resolved per call, not captured at import: the CLI, the server and app
+    containers run from different cwds."""
+    return os.environ.get("AW_WORKSPACE_CONTAINER_DIR", "/opt/aw-workspace")
+
+
 def arch_dir() -> str:
-    """Where generated component docs go — under the workspace's `docs/` tree,
-    which is a mapped folder the KB indexes. Resolved per call, not captured at
-    import: the CLI, the server and app containers run from different cwds."""
-    root = os.environ.get("AW_WORKSPACE_CONTAINER_DIR", "/opt/aw-workspace")
-    return os.path.join(root, "docs", "architecture")
+    """Where GENERIC component docs go — the workspace's own `docs/` tree,
+    a mapped folder the KB indexes."""
+    return os.path.join(workspace_root(), "docs", "architecture")
+
+
+def dir_for_component(component: dict | None) -> str:
+    """A component's doc belongs to whichever repo the component lives in.
+
+    An app's architecture doc in `repos/<app>/docs/architecture/` is committed
+    with that app, travels with it, and survives an uninstall/reinstall —
+    whereas the same file in the workspace's own tree is orphaned the moment
+    the app is removed, and then describes something that isn't there.
+
+    Generic components (aw-workspace itself, its subpackages, postgres,
+    mcp-gateway) have no repo of their own and stay in the workspace's docs/.
+    A repo that isn't checked out here falls back there too: a doc in a
+    slightly odd place beats no doc.
+    """
+    repo = (component or {}).get("repo")
+    if not repo or repo == "aw-workspace":
+        return arch_dir()
+    repo_dir = os.path.join(workspace_root(), "repos", repo)
+    if not os.path.isdir(repo_dir):
+        return arch_dir()
+    return os.path.join(repo_dir, "docs", "architecture")
 
 
 # ---------------------------------------------------------------------------
@@ -137,8 +163,10 @@ def render_component_md(slug: str) -> str | None:
 # Writing / pruning
 # ---------------------------------------------------------------------------
 
-def _file_for(slug: str) -> str:
-    return os.path.join(arch_dir(), f"{slug}.md")
+def _file_for(slug: str, component: dict | None = None) -> str:
+    if component is None:
+        component = db.get_component(slug)
+    return os.path.join(dir_for_component(component), f"{slug}.md")
 
 
 def _write_if_changed(path: str, content: str) -> bool:
@@ -173,22 +201,44 @@ def regenerate_all(trigger_build: bool = True) -> dict:
     """Write the current set of component files and prune any generated ``.md``
     with no backing row. Idempotent and deterministic.
 
-    ``trigger_build`` is accepted and ignored — see the module docstring."""
-    os.makedirs(arch_dir(), exist_ok=True)
+    ``trigger_build`` is accepted and ignored — see the module docstring.
+
+    Docs are spread across repos now, so pruning has to sweep every directory
+    it ever wrote to, not just the workspace's. It only ever deletes a file
+    whose frontmatter says ``source: generated`` — a hand-written ADR sitting
+    in the same folder is not this function's to remove, and deleting one would
+    be unrecoverable from here."""
     slugs = set(db.all_component_slugs())
+    components = {c["slug"]: c for c in db.list_components()}
+
     changed = 0
+    dirs = {arch_dir()}
     for slug in sorted(slugs):
+        target_dir = dir_for_component(components.get(slug))
+        dirs.add(target_dir)
+        os.makedirs(target_dir, exist_ok=True)
         content = render_component_md(slug)
-        if content is not None and _write_if_changed(_file_for(slug), content):
+        if content is None:
+            continue
+        if _write_if_changed(os.path.join(target_dir, f"{slug}.md"), content):
             changed += 1
 
     pruned = 0
-    for fname in os.listdir(arch_dir()):
-        if not fname.endswith(".md"):
+    for d in sorted(dirs):
+        if not os.path.isdir(d):
             continue
-        slug = fname[:-3]
-        if slug not in slugs:
-            os.remove(os.path.join(arch_dir(), fname))
+        for fname in sorted(os.listdir(d)):
+            if not fname.endswith(".md") or fname[:-3] in slugs:
+                continue
+            path = os.path.join(d, fname)
+            try:
+                with open(path) as f:
+                    head = f.read(400)
+            except OSError:
+                continue
+            if "source: generated" not in head:
+                continue     # someone wrote this by hand; not ours to delete
+            os.remove(path)
             pruned += 1
 
     return {"changed": changed, "pruned": pruned}

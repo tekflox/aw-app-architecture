@@ -65,6 +65,14 @@ TABLE_PREFIX = "app__architecture__"
 #: ``upsert_component``.
 SCAN_PROVENANCE = "scan"
 
+#: Sentinel for "this caller has no opinion about that column".
+#: ``upsert_component`` needs to tell an explicit ``None`` (clear the field)
+#: apart from an omitted argument (leave whatever is there). Without it every
+#: upsert wrote NULL into every column it wasn't given — so a `test_cmd` set by
+#: hand survived until the nightly scan, which has no opinion about test_cmd
+#: and silently blanked it.
+_UNSET = object()
+
 #: Every table/VIEW this module owns, in the order ``execute_multi`` needs them
 #: declared. Kept next to the models so adding a model without registering it
 #: here fails loudly at bootstrap instead of silently skipping its migrations.
@@ -471,15 +479,15 @@ def _component_id(session: Session, slug: str):
 def upsert_component(
     slug: str,
     name: str,
-    parent_slug: str | None = None,
-    repo: str | None = None,
-    layer: str | None = None,
-    description: str | None = None,
-    technologies: list[str] | None = None,
-    docs_dir: str | None = None,
-    run_cmd: str | None = None,
-    test_cmd: str | None = None,
-    test_base_path: str | None = None,
+    parent_slug=_UNSET,
+    repo=_UNSET,
+    layer=_UNSET,
+    description=_UNSET,
+    technologies=_UNSET,
+    docs_dir=_UNSET,
+    run_cmd=_UNSET,
+    test_cmd=_UNSET,
+    test_base_path=_UNSET,
     edited_by: str = "generated",
 ) -> dict:
     """Create or update a component by its stable slug (idempotent).
@@ -503,30 +511,29 @@ def upsert_component(
     A refused update is a no-op, not an error: the scan re-running against a
     fully curated catalog should be silent, not noisy.
     """
+    supplied = {
+        "repo": repo, "layer": layer, "description": description,
+        "technologies": technologies, "docs_dir": docs_dir, "run_cmd": run_cmd,
+        "test_cmd": test_cmd, "test_base_path": test_base_path,
+    }
+    supplied = {k: v for k, v in supplied.items() if v is not _UNSET}
+    if "technologies" in supplied:
+        supplied["technologies"] = supplied["technologies"] or []
+
     with get_session() as s:
-        parent_id = _resolve_parent_id(s, parent_slug)
-        stmt = pg_insert(Component).values(
-            slug=slug, name=name, parent_id=parent_id, repo=repo, layer=layer,
-            description=description, technologies=technologies or [],
-            docs_dir=docs_dir, run_cmd=run_cmd, test_cmd=test_cmd,
-            test_base_path=test_base_path, edited_by=edited_by,
-        )
+        values = dict(slug=slug, name=name, edited_by=edited_by, **supplied)
+        if parent_slug is not _UNSET:
+            values["parent_id"] = _resolve_parent_id(s, parent_slug)
+        stmt = pg_insert(Component).values(**values)
+        # Only the columns this caller actually spoke about. An omitted one
+        # keeps whatever is in the row: the scan has no opinion about
+        # `test_cmd`, and used to blank it on every nightly run, so a command
+        # someone set by hand survived exactly until 05:00.
+        updates = {k: getattr(stmt.excluded, k) for k in values if k != "slug"}
+        updates["updated_at"] = func.now()
         stmt = stmt.on_conflict_do_update(
             index_elements=["slug"],
-            set_=dict(
-                name=stmt.excluded.name,
-                parent_id=stmt.excluded.parent_id,
-                repo=stmt.excluded.repo,
-                layer=stmt.excluded.layer,
-                description=stmt.excluded.description,
-                technologies=stmt.excluded.technologies,
-                docs_dir=stmt.excluded.docs_dir,
-                run_cmd=stmt.excluded.run_cmd,
-                test_cmd=stmt.excluded.test_cmd,
-                test_base_path=stmt.excluded.test_base_path,
-                edited_by=stmt.excluded.edited_by,
-                updated_at=func.now(),
-            ),
+            set_=updates,
             # Only present for a scan write — a curated write has no condition
             # and overwrites as before.
             where=(Component.edited_by == SCAN_PROVENANCE)
@@ -1009,11 +1016,23 @@ def list_component_tests(component_slug: str | None = None) -> list[dict]:
 
 
 def get_testcase_by_path(file_path: str) -> dict | None:
+    """One testcase, plus its owning component's ``test_cmd`` and ``repo``.
+
+    The component fields ride along because the runner needs them and asking
+    separately would mean a second round-trip for every play-button press.
+    ``test_cmd`` is the per-repo template that spares anyone from registering a
+    ``run_command`` on each of a few hundred discovered files.
+    """
     with get_session() as s:
         row = s.execute(
             select(
                 Testcase.id, Testcase.kind, Testcase.file_path, Testcase.run_command,
-            ).where(Testcase.file_path == file_path)
+                Component.test_cmd.label("component_test_cmd"),
+                Component.repo.label("component_repo"),
+                Component.slug.label("component_slug"),
+            )
+            .outerjoin(Component, Component.id == Testcase.component_id)
+            .where(Testcase.file_path == file_path)
         ).mappings().first()
         return dict(row) if row else None
 

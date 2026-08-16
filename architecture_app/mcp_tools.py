@@ -308,11 +308,16 @@ def _dispatch(tool: str, a: dict) -> dict:
 
     # ---- write: component ----
     if tool == "create_component":
+        # Only forward keys the caller actually sent. Passing a.get(...) for
+        # every field turned "I didn't mention layer" into "set layer to NULL",
+        # which made create_component on an existing slug a destructive
+        # operation — see upsert_component's _UNSET sentinel.
+        optional = ("parent_slug", "repo", "layer", "description", "technologies",
+                    "docs_dir", "run_cmd", "test_cmd", "test_base_path")
         return _ok(db.upsert_component(
-            a["slug"], a["name"], a.get("parent_slug"), a.get("repo"), a.get("layer"),
-            a.get("description"), a.get("technologies"), a.get("docs_dir"),
-            a.get("run_cmd"), a.get("test_cmd"), a.get("test_base_path"),
-            a.get("edited_by", "generated")))
+            a["slug"], a["name"],
+            edited_by=a.get("edited_by", "generated"),
+            **{k: a[k] for k in optional if k in a}))
     if tool == "update_component":
         fields = {k: v for k, v in a.items() if k != "slug"}
         return _ok(db.update_component(a["slug"], **fields))

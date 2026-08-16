@@ -34,26 +34,54 @@ from .discovery import workspace_root
 _MAX_OUTPUT_CHARS = 20_000
 
 
+def _component_command(testcase: dict, file_path: str) -> str | None:
+    """Render the component's ``test_cmd`` template for one file.
+
+    ``{file}`` -> workspace-relative path (what the runner's cwd is anchored
+    to). ``{rel}`` -> path relative to the component's own repo, which is what
+    a command that `cd`s into that repo needs. Neither present -> append the
+    path, so the simplest useful template is just `pytest`.
+    """
+    template = (testcase.get("component_test_cmd") or "").strip()
+    if not template:
+        return None
+    rel = file_path
+    repo = testcase.get("component_repo")
+    prefix = f"repos/{repo}/"
+    if repo and file_path.startswith(prefix):
+        rel = file_path[len(prefix):]
+    if "{file}" in template or "{rel}" in template:
+        return template.replace("{file}", file_path).replace("{rel}", rel)
+    return f"{template} {file_path}"
+
+
 def run_testcase(file_path: str, timeout: int = 300) -> dict:
     """Run one test case, record last_run_status/at, return the outcome plus
     captured console output for display.
 
-    Dispatch is per-testcase, not hardcoded to pytest:
-    - If the testcase has an explicit `run_command` set (see
-      `set_testcase_run_command`), run that instead — any command works
-      (a Python script dispatching to a Remote Agent for a Swift XCTest on
-      the Xcode Simulator, a shell one-liner, whatever), as long as it
-      exits 0 on pass / non-zero on fail, same convention as pytest.
-    - Otherwise, only .py files are runnable via the pytest fallback. A
-      non-Python test with no run_command registered can't be executed
-      here, and must NOT be recorded as "fail" just because pytest
-      couldn't collect it — that would silently corrupt a real (possibly
-      passing) status with a false negative. Leave last_run_status
-      untouched in that case.
+    Three levels, most specific first — all exiting 0 on pass / non-zero on
+    fail, the pytest convention, so the play button works the same regardless
+    of what actually runs:
+
+    1. the testcase's own ``run_command`` (``set_testcase_run_command``) — the
+       escape hatch for one awkward file;
+    2. its component's ``test_cmd`` — **the one that scales**. Discovery finds
+       hundreds of files; registering a command on each is not a thing anyone
+       will do, while "this is how you run one test in this repo" is a single
+       fact per repo. `{file}` in the template is replaced with the
+       workspace-relative path and `{rel}` with the path relative to the
+       component's repo; with no placeholder the path is appended.
+    3. the naive ``python -m pytest <file>`` fallback, which only applies to
+       ``.py``.
+
+    A non-Python test with none of the above can't be executed here and must
+    NOT be recorded as "fail" just because pytest couldn't collect it — that
+    would overwrite a real (possibly passing) status with a false negative.
+    Left untouched in that case.
     """
     root = workspace_root()
-    testcase = db.get_testcase_by_path(file_path)
-    run_command = testcase.get("run_command") if testcase else None
+    testcase = db.get_testcase_by_path(file_path) or {}
+    run_command = testcase.get("run_command") or _component_command(testcase, file_path)
 
     if not run_command and not file_path.endswith(".py"):
         return {

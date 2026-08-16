@@ -576,3 +576,96 @@ class TestDeclaresWhatItTouches:
         to say it. It does now — the guard stays as the runtime backstop, the
         manifest stops install on an old workspace in the first place."""
         assert self._manifest()["runtime"]["requires_workspace"]
+
+
+class TestScanDoesNotBlankWhatItDoesNotDerive:
+    """Setting `test_cmd` by hand used to survive until 05:00. upsert_component
+    wrote EVERY column from its arguments, so the nightly scan — which has no
+    opinion about test_cmd — blanked it, silently, every night. Reproduced
+    live before fixing: PROBE-123 in, None out after one scan."""
+
+    def test_omitted_columns_are_not_in_the_update(self):
+        source = open(os.path.join(REPO, "architecture_app", "store.py")).read()
+        fn = source[source.index("def upsert_component("):source.index("_COMPONENT_FIELDS")]
+        # the update set is built from what was supplied, not a fixed list
+        assert "updates = {k: getattr(stmt.excluded, k) for k in values" in fn
+        assert "is not _UNSET" in fn
+
+    def test_sentinel_distinguishes_none_from_omitted(self):
+        from architecture_app import store
+        import inspect
+        sig = inspect.signature(store.upsert_component)
+        for name in ("repo", "layer", "description", "test_cmd", "test_base_path"):
+            assert sig.parameters[name].default is store._UNSET, name
+
+    def test_mcp_create_component_forwards_only_what_was_sent(self):
+        """`a.get(field)` for every field turned "I didn't mention layer" into
+        "set layer to NULL", making create_component destructive on an
+        existing slug."""
+        source = open(os.path.join(REPO, "architecture_app", "mcp_tools.py")).read()
+        branch = source[source.index('if tool == "create_component":'):
+                        source.index('if tool == "update_component":')]
+        assert "for k in optional if k in a" in branch
+
+
+class TestTestCommandFallback:
+    """Discovery finds hundreds of files; nobody registers a run_command on
+    each. `Component.test_cmd` existed in the schema from the monolith and was
+    never read — one fact per repo instead of one per file."""
+
+    def test_component_test_cmd_is_used(self):
+        from architecture_app.test_runner import _component_command
+        tc = {"component_test_cmd": "pytest", "component_repo": "aw-backend"}
+        assert _component_command(tc, "repos/aw-backend/src/tests/x.py") == \
+            "pytest repos/aw-backend/src/tests/x.py"
+
+    def test_file_placeholder(self):
+        from architecture_app.test_runner import _component_command
+        tc = {"component_test_cmd": "uv run pytest {file} -q", "component_repo": "x"}
+        assert _component_command(tc, "repos/x/t.py") == "uv run pytest repos/x/t.py -q"
+
+    def test_rel_placeholder_is_relative_to_the_repo(self):
+        """What a command that cd's into the repo needs."""
+        from architecture_app.test_runner import _component_command
+        tc = {"component_test_cmd": "cd repos/aw-backend && pytest {rel}",
+              "component_repo": "aw-backend"}
+        assert _component_command(tc, "repos/aw-backend/src/tests/x.py") == \
+            "cd repos/aw-backend && pytest src/tests/x.py"
+
+    def test_no_template_is_no_command(self):
+        from architecture_app.test_runner import _component_command
+        assert _component_command({"component_test_cmd": "  "}, "x.py") is None
+        assert _component_command({}, "x.py") is None
+
+    def test_explicit_run_command_still_wins(self):
+        source = open(os.path.join(REPO, "architecture_app", "test_runner.py")).read()
+        assert 'testcase.get("run_command") or _component_command(' in source
+
+
+class TestDocsLiveWithTheirRepo:
+    """An app's architecture doc in repos/<app>/docs/ is committed with that
+    app and survives an uninstall/reinstall. The same file in the workspace's
+    tree is orphaned the moment the app is removed, and then describes
+    something that no longer exists."""
+
+    def test_app_component_routes_to_its_own_repo(self):
+        from architecture_app import md_export
+        d = md_export.dir_for_component({"repo": "aw-app-architecture"})
+        assert d.endswith("repos/aw-app-architecture/docs/architecture")
+
+    def test_generic_component_stays_in_the_workspace(self):
+        from architecture_app import md_export
+        for comp in ({"repo": None}, {"repo": "aw-workspace"}, {}):
+            assert md_export.dir_for_component(comp) == md_export.arch_dir()
+
+    def test_unchecked_out_repo_falls_back_rather_than_failing(self):
+        from architecture_app import md_export
+        d = md_export.dir_for_component({"repo": "definitely-not-cloned-here"})
+        assert d == md_export.arch_dir()
+
+    def test_prune_only_removes_generated_files(self):
+        """Docs now land in repos that also hold hand-written ADRs. Deleting
+        one of those would be unrecoverable from here."""
+        source = open(os.path.join(REPO, "architecture_app", "md_export.py")).read()
+        fn = source[source.index("def regenerate_all("):]
+        assert '"source: generated" not in head' in fn
