@@ -99,7 +99,11 @@ def run_testcase(file_path: str, timeout: int = 300) -> dict:
     else:
         full = os.path.join(root, file_path)
         if not os.path.exists(full):
-            db.update_testcase_result(file_path, "unknown")
+            # Only record against a testcase that exists. A path nobody
+            # registered has nothing to update, and trying threw a ValueError
+            # that the route turned into a 500.
+            if testcase:
+                db.update_testcase_result(file_path, "unknown")
             return {"file_path": file_path, "status": "unknown",
                     "output": f"file not found: {file_path}"}
         cmd = [sys.executable, "-m", "pytest", file_path, "-v", "--no-header"]

@@ -681,3 +681,21 @@ class TestDocsLiveWithTheirRepo:
         source = open(os.path.join(REPO, "architecture_app", "md_export.py")).read()
         fn = source[source.index("def regenerate_all("):]
         assert '"source: generated" not in head' in fn
+
+
+class TestUnknownPathIsNotAServerError:
+    """POSTing a file_path with no testcase row returned a bare 500: the runner
+    called update_testcase_result, which raises for a row that isn't there.
+    "You asked for something I don't know about" is a client error — a 500
+    sends whoever hit it hunting for a crash that doesn't exist."""
+
+    def test_route_translates_valueerror_to_404(self):
+        source = open(os.path.join(REPO, "architecture_app", "routes.py")).read()
+        branch = source[source.index("async def run_testcase_route("):
+                        source.index("async def run_discovery_route(")]
+        assert "except ValueError" in branch
+        assert "status_code=404" in branch
+
+    def test_runner_does_not_record_against_a_missing_row(self):
+        source = open(os.path.join(REPO, "architecture_app", "test_runner.py")).read()
+        assert "if testcase:\n                db.update_testcase_result" in source

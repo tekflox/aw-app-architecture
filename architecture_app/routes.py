@@ -124,7 +124,15 @@ def build_routes(config: dict | None = None) -> FastAPI:
         # result. The Tests view treats a failed fetch as "unknown, refresh
         # to see the recorded status" rather than as a test failure.
         timeout = int(config.get("testcase_timeout_seconds") or 300)
-        return await run_in_threadpool(run_testcase, body.file_path, timeout)
+        try:
+            return await run_in_threadpool(run_testcase, body.file_path, timeout)
+        except ValueError as exc:
+            # A path with no testcase row reached update_testcase_result, which
+            # raises — and that surfaced as a bare 500. "You asked me to run
+            # something I don't know about" is a client error with a readable
+            # message, not a server fault; a 500 sends whoever hit it looking
+            # for a crash that isn't there.
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.post("/discovery/run")
     async def run_discovery_route():
