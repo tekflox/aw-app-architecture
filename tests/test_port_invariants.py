@@ -529,3 +529,25 @@ class TestScanTaskShape:
                 assert "put(" in prev or "if put" in prev or indent > 4, (
                     f"unconditional increment: {line!r}"
                 )
+
+    def test_plain_repos_get_no_invented_description(self):
+        """A bare checkout states nothing about its purpose. Writing a
+        placeholder would be a guess that then reads as curated fact — and the
+        provenance rule would go on protecting it."""
+        source = open(os.path.join(REPO, "architecture_app", "scan.py")).read()
+        block = source[source.index("for repo_dir in _plain_repo_dirs():"):
+                       source.index("# ---- pass 1")]
+        assert "description=" not in block
+        assert "layer=" not in block
+
+    def test_plain_repo_detection_requires_a_git_checkout(self):
+        """`repos/` also holds scratch directories; a folder is not a repo."""
+        source = open(os.path.join(REPO, "architecture_app", "scan.py")).read()
+        fn = source[source.index("def _plain_repo_dirs("):source.index("#: extension -> technology")]
+        assert '".git"' in fn
+
+    def test_tech_detection_does_not_walk_the_whole_tree(self):
+        """A 40k-file repo must not make the nightly scan expensive."""
+        source = open(os.path.join(REPO, "architecture_app", "scan.py")).read()
+        fn = source[source.index("def _detect_tech("):source.index("def _plain_test_paths(")]
+        assert "os.walk" not in fn

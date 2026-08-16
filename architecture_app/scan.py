@@ -92,6 +92,75 @@ def _repo_dirs() -> list[str]:
     return sorted(glob.glob(os.path.join(root, "repos", "aw-app-*")))
 
 
+def _plain_repo_dirs() -> list[str]:
+    """Checked-out repos that are NOT apps — aw-backend, aw-workspace-ui,
+    aw-mobile, agentic-workspace, and so on.
+
+    They have no manifest, so almost nothing is derivable: no description, no
+    layer, no connections. What IS derivable is that they exist and what
+    they're written in — and "this repo is in the workspace and nobody has
+    described it" is a fact worth showing rather than an omission. The
+    monolith's catalog missed this class entirely, which is how it ended up
+    pointing at `aw-meta-display` for two years after that repo was renamed to
+    `aw-mobile`.
+
+    Nothing is invented here: description and layer stay null, waiting for a
+    person or an agent, and the provenance rule then protects whatever they
+    write.
+    """
+    root = workspace_root()
+    out = []
+    repos_dir = os.path.join(root, "repos")
+    if not os.path.isdir(repos_dir):
+        return out
+    for name in sorted(os.listdir(repos_dir)):
+        path = os.path.join(repos_dir, name)
+        if name.startswith("aw-app-") or not os.path.isdir(path):
+            continue
+        if not os.path.isdir(os.path.join(path, ".git")):
+            continue  # a plain directory is not a component
+        out.append(path)
+    return out
+
+
+#: extension -> technology, for repos with no manifest to ask. Only languages
+#: whose presence is unambiguous from a file extension.
+_EXT_TECH = {".py": "python", ".swift": "swift", ".go": "go", ".rs": "rust",
+             ".ts": "typescript", ".tsx": "typescript", ".kt": "kotlin"}
+
+
+def _detect_tech(repo_dir: str) -> list[str]:
+    """Sample the top two levels rather than walking the whole tree — a repo
+    with 40k files should not make the nightly scan expensive."""
+    found = set()
+    for depth in ("*", "*/*"):
+        for path in glob.glob(os.path.join(repo_dir, depth)):
+            ext = os.path.splitext(path)[1]
+            if ext in _EXT_TECH:
+                found.add(_EXT_TECH[ext])
+    if os.path.isfile(os.path.join(repo_dir, "package.json")):
+        found.add("node")
+    if glob.glob(os.path.join(repo_dir, "*.xcodeproj")):
+        found.add("xcode")
+    return sorted(found)
+
+
+def _plain_test_paths(repo_dir: str) -> str | None:
+    """Conventional test directories, by name. A Swift `*UITests` dir counts:
+    discovery recognises `*Tests.swift`, and those cases land as `unknown`
+    until someone registers a run_command — which is correct, not a gap. There
+    is no generic "run an XCTest" command, and recording `fail` because pytest
+    could not collect a Swift file would be a false negative on a suite that
+    may well be green."""
+    root = workspace_root()
+    candidates = [os.path.join(repo_dir, "tests"),
+                  os.path.join(repo_dir, "src", "tests")]
+    candidates += sorted(glob.glob(os.path.join(repo_dir, "*Tests")))
+    candidates += sorted(glob.glob(os.path.join(repo_dir, "*UITests")))
+    paths = [os.path.relpath(p, root) for p in candidates if os.path.isdir(p)]
+    return ",".join(paths) or None
+
+
 def _read_manifest(repo_dir: str) -> dict | None:
     path = os.path.join(repo_dir, "aw-app.json")
     try:
@@ -169,6 +238,17 @@ def scan_workspace() -> dict:
                repo="aw-workspace", layer=layer, description=desc,
                technologies=["python"],
                test_base_path=",".join(paths) or None):
+            created_components += 1
+
+    # ---- repos that aren't apps -------------------------------------------
+    for repo_dir in _plain_repo_dirs():
+        name = os.path.basename(repo_dir)
+        if put(slug=name, name=name, repo=name,
+               # description and layer stay null on purpose: nothing in a bare
+               # checkout states them, and a placeholder would be a guess that
+               # then looks like curated fact.
+               technologies=_detect_tech(repo_dir),
+               test_base_path=_plain_test_paths(repo_dir)):
             created_components += 1
 
     # ---- pass 1: every component, before any edge -------------------------
