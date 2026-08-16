@@ -558,12 +558,22 @@ class TestDeclaresWhatItTouches:
         with open(os.path.join(REPO, "aw-app.json")) as f:
             return json.load(f)
 
-    def test_declares_fs_workspace_read(self):
-        """scan.py walks repos/, discovery walks every test_base_path, and
-        md_export writes into docs/architecture/ — all outside this app's own
-        data dir. Tier-1 runs in-process so nothing physically stopped it, but
-        the manifest was not a description of what the app touches."""
-        assert "fs:workspace-read" in self._manifest()["permissions"]
+    def test_does_not_declare_a_capability_this_workspace_cannot_grant(self):
+        """`fs:workspace-read` was added to core on 2026-08-16 and belongs in
+        this manifest — scan.py walks repos/, discovery walks every
+        test_base_path, md_export writes docs/architecture/, none of it under
+        the app's own data dir.
+
+        It is NOT declared yet, deliberately. The running workspace validates
+        permissions against the capabilities.py it loaded at boot, and the
+        cloud registry against aw-backend's mirror, so declaring it before BOTH
+        have shipped makes the install fail — and `--update` is uninstall+
+        install, so the failure takes the app down rather than leaving the old
+        version running. That happened once; this test is the reminder.
+
+        Re-add it (and flip this assertion) after the workspace restarts on
+        >= the release carrying the capability and aw-backend is deployed."""
+        assert "fs:workspace-read" not in self._manifest()["permissions"]
 
     def test_declares_the_core_version_it_needs(self):
         """store.bind() hand-rolls this check because the manifest had no way

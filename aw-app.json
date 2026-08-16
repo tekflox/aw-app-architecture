@@ -22,7 +22,6 @@
   },
   "permissions": [
     "db:own-tables",
-    "fs:workspace-read",
     "routes:register",
     "tasks:contribute",
     "ui:code",
