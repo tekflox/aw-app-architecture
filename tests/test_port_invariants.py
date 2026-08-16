@@ -699,3 +699,12 @@ class TestUnknownPathIsNotAServerError:
     def test_runner_does_not_record_against_a_missing_row(self):
         source = open(os.path.join(REPO, "architecture_app", "test_runner.py")).read()
         assert "if testcase:\n                db.update_testcase_result" in source
+
+    def test_prune_also_removes_a_doc_left_in_the_wrong_repo(self):
+        """A doc goes stale two ways now: its component vanished, or its
+        component moved repos and this copy is a leftover. Checking only the
+        first left every pre-move copy sitting in the workspace tree — two
+        files for one component, one of them wrong, and no error anywhere."""
+        source = open(os.path.join(REPO, "architecture_app", "md_export.py")).read()
+        fn = source[source.index("def regenerate_all("):]
+        assert "dir_for_component(components.get(slug)) == d" in fn

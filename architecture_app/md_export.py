@@ -223,13 +223,21 @@ def regenerate_all(trigger_build: bool = True) -> dict:
         if _write_if_changed(os.path.join(target_dir, f"{slug}.md"), content):
             changed += 1
 
+    # Prune on TWO conditions, because a doc can now be obsolete two ways:
+    # its component is gone, or its component moved to another repo and this
+    # copy is a stale duplicate. The first version of this only checked the
+    # former, so routing app docs into their own repos left every previous
+    # copy behind in the workspace tree — two files, one stale, no error.
     pruned = 0
     for d in sorted(dirs):
         if not os.path.isdir(d):
             continue
         for fname in sorted(os.listdir(d)):
-            if not fname.endswith(".md") or fname[:-3] in slugs:
+            if not fname.endswith(".md"):
                 continue
+            slug = fname[:-3]
+            if slug in slugs and dir_for_component(components.get(slug)) == d:
+                continue                      # lives here, still exists
             path = os.path.join(d, fname)
             try:
                 with open(path) as f:
