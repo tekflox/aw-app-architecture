@@ -73,6 +73,20 @@ SCAN_PROVENANCE = "scan"
 #: and silently blanked it.
 _UNSET = object()
 
+
+
+#: A ``run_command`` starting with this marks a testcase as deliberately not
+#: executed HERE, with the reason after the colon. It answers the question
+#: "what do I do with a real test this environment cannot run?" — the wrong
+#: answer, tried once, is to narrow the component's test_base_path until the
+#: row disappears. That deletes a real test from the catalog to make a
+#: dashboard green, destroys any curated run_command / is_flaky / requirement
+#: link on it, and makes the coverage number a lie.
+#:
+#: This keeps the row, keeps the reason visible, and survives every rescan
+#: because upsert_testcase never clobbers run_command.
+SKIP_PREFIX = "SKIP:"
+
 #: Every table/VIEW this module owns, in the order ``execute_multi`` needs them
 #: declared. Kept next to the models so adding a model without registering it
 #: here fails loudly at bootstrap instead of silently skipping its migrations.
@@ -946,7 +960,20 @@ def update_testcase_result(
 def set_testcase_run_command(file_path: str, run_command: str | None) -> dict:
     """Register (or clear, with None) an explicit override for how to run
     this test, when it isn't a plain `pytest <file_path>` (e.g. a Swift
-    XCTest dispatched to a Remote Agent). See Testcase.run_command."""
+    XCTest dispatched to a Remote Agent). See Testcase.run_command.
+
+    Marking a test ``SKIP:`` also RETIRES whatever verdict it was carrying.
+    The runner's skip branch deliberately records nothing — "we chose not to
+    run it" says nothing about whether it passes — but that left a stale
+    `fail` sitting on the row forever, with nothing able to clear it, and the
+    component's derived health went on reading `broken` because of a test
+    nobody intends to run again here. Withdrawing the claim is the honest
+    state: `unknown` means "no verdict", which is exactly the situation.
+
+    Unmarking (clearing the SKIP) does NOT restore the old verdict. It is gone
+    on purpose — it was measured under conditions we have since declared do
+    not apply, so the next real run is the only thing entitled to set one.
+    """
     with get_session() as s:
         tc = s.execute(
             select(Testcase).where(Testcase.file_path == file_path)
@@ -954,6 +981,9 @@ def set_testcase_run_command(file_path: str, run_command: str | None) -> dict:
         if tc is None:
             raise ValueError(f"testcase '{file_path}' not found")
         tc.run_command = run_command
+        if (run_command or "").strip().startswith(SKIP_PREFIX):
+            tc.last_run_status = "unknown"
+            tc.last_run_at = None
         s.commit()
     return {"ok": True}
 

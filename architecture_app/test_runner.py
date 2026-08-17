@@ -53,19 +53,11 @@ def _component_command(testcase: dict, file_path: str) -> str | None:
     if "{file}" in template or "{rel}" in template:
         return template.replace("{file}", file_path).replace("{rel}", rel)
     return f"{template} {file_path}"
+#: Re-exported from the store, which owns it: setting a SKIP: command is a
+#: WRITE (it also retires the stale verdict), so the marker has to be known
+#: where that write happens.
+SKIP_PREFIX = db.SKIP_PREFIX
 
-
-#: A ``run_command`` starting with this marks a testcase as deliberately not
-#: executed HERE, with the reason after the colon. It answers the question
-#: "what do I do with a real test this environment cannot run?" — the wrong
-#: answer, tried once, is to narrow the component's test_base_path until the
-#: row disappears. That deletes a real test from the catalog to make a
-#: dashboard green, destroys any curated run_command / is_flaky / requirement
-#: link on it, and makes the coverage number a lie.
-#:
-#: This keeps the row, keeps the reason visible, and survives every rescan
-#: because upsert_testcase never clobbers run_command.
-SKIP_PREFIX = "SKIP:"
 
 #: pytest exit codes that mean NO VERDICT WAS PRODUCED, as opposed to 1, which
 #: means tests ran and failed — the only one that is real signal about the code.

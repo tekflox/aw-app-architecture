@@ -992,3 +992,44 @@ class TestPlainReposDescribeThemselves:
             desc, got = scan._declared(path)
             assert got == layer, f"{repo}: {got!r}"
             assert desc, f"{repo} has no description"
+
+
+class TestMarkingSkipRetiresTheOldVerdict:
+    """The runner's SKIP branch records nothing on purpose — choosing not to
+    run a test says nothing about whether it passes. But that left whatever
+    verdict the row was already carrying sitting there permanently, with
+    nothing able to clear it: the monolith's watch e2e read `fail` after being
+    marked not-runnable, and v_component_health went on deriving `broken` from
+    a test nobody intends to run here again."""
+
+    def test_the_setter_clears_a_stale_status(self):
+        source = open(os.path.join(REPO, "architecture_app", "store.py")).read()
+        fn = source[source.index("def set_testcase_run_command("):
+                    source.index("def delete_testcase(")]
+        assert "startswith(SKIP_PREFIX)" in fn
+        assert 'last_run_status = "unknown"' in fn
+        assert "last_run_at = None" in fn
+
+    def test_only_a_skip_clears_it(self):
+        """Registering an ordinary run_command must not wipe a real verdict."""
+        source = open(os.path.join(REPO, "architecture_app", "store.py")).read()
+        fn = source[source.index("def set_testcase_run_command("):
+                    source.index("def delete_testcase(")]
+        clear = fn.index('last_run_status = "unknown"')
+        guard = fn.index("startswith(SKIP_PREFIX)")
+        assert guard < clear, "the clear must sit inside the SKIP branch"
+
+    def test_the_runner_still_records_nothing_for_a_skip(self):
+        """Retiring the verdict happens at MARK time, once. If the runner also
+        wrote on every run, a skipped test would keep re-stamping itself."""
+        source = open(os.path.join(REPO, "architecture_app", "test_runner.py")).read()
+        branch = source[source.index("if explicit.startswith(SKIP_PREFIX):"):]
+        branch = branch[:branch.index("run_command = explicit or")]
+        assert "update_testcase_result" not in branch
+
+    def test_the_marker_has_one_definition(self):
+        """It is needed on both the read path (the runner) and the write path
+        (the setter); two literals would drift and the drift would be silent."""
+        runner = open(os.path.join(REPO, "architecture_app", "test_runner.py")).read()
+        assert runner.count('"SKIP:"') == 0
+        assert "SKIP_PREFIX = db.SKIP_PREFIX" in runner
