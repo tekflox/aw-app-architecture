@@ -429,9 +429,18 @@ class TestProvenance:
     write: a scan write only overwrites a row still marked 'scan'."""
 
     def test_scan_write_is_conditional(self):
+        """A scan write carries a guard; a curated one does not.
+
+        The guard used to be `== SCAN_PROVENANCE`. It admits UNCLAIMED_
+        PROVENANCE too now — 'generated' is the column's server_default, not an
+        ownership claim — so the assertion is on the guard EXISTING and being
+        scoped to scan writes, not on the exact set it admits. Which values it
+        admits is asserted, against scan.py, in
+        TestUnclaimedIsNotCurated.test_the_sql_guard_and_the_curated_set_agree.
+        """
         source = open(os.path.join(REPO, "architecture_app", "store.py")).read()
         upsert = source[source.index("def upsert_component("):source.index("_COMPONENT_FIELDS")]
-        assert "where=(Component.edited_by == SCAN_PROVENANCE)" in upsert
+        assert "where=Component.edited_by.in_(" in upsert
         assert "if edited_by == SCAN_PROVENANCE else None" in upsert
 
     def test_curated_write_stays_unconditional(self):
@@ -1252,7 +1261,8 @@ class TestAPartialWriteDoesNotStealProvenance:
     def test_an_explicit_scan_write_still_guards_itself(self):
         source = open(os.path.join(REPO, "architecture_app", "store.py")).read()
         fn = source[source.index("def upsert_component("):source.index("_COMPONENT_FIELDS = {")]
-        assert "where=(Component.edited_by == SCAN_PROVENANCE)" in fn
+        assert "if edited_by == SCAN_PROVENANCE else None" in fn
+        assert "where=Component.edited_by.in_(" in fn
 
     def test_provision_does_not_claim_authorship(self):
         source = open(os.path.join(REPO, "architecture_app", "provision.py")).read()
@@ -1305,3 +1315,22 @@ class TestUnclaimedIsNotCurated:
         source = open(os.path.join(REPO, "architecture_app", "scan.py")).read()
         block = source[source.index("_unowned = {"):source.index("curated = {")]
         assert "AGENT_PROVENANCE" not in block
+
+    def test_the_sql_guard_and_the_curated_set_agree(self):
+        """Two halves decide whether the scan may write a row: scan.py's
+        `curated` set (skip it entirely) and the ON CONFLICT WHERE clause
+        (drop the UPDATE). They must admit the SAME values.
+
+        They didn't: `curated` learned that 'generated' is unclaimed while the
+        WHERE still demanded 'scan', so the scan decided a row was fair game,
+        issued the write, and the database silently discarded it. The rescan
+        reported success and aw-workspace stayed frozen — a disagreement with
+        no error anywhere."""
+        store_src = open(os.path.join(REPO, "architecture_app", "store.py")).read()
+        fn = store_src[store_src.index("def upsert_component("):
+                       store_src.index("_COMPONENT_FIELDS = {")]
+        assert "in_([SCAN_PROVENANCE, UNCLAIMED_PROVENANCE])" in fn
+
+        scan_src = open(os.path.join(REPO, "architecture_app", "scan.py")).read()
+        block = scan_src[scan_src.index("_unowned = {"):scan_src.index("curated = {")]
+        assert "SCAN_PROVENANCE" in block and "UNCLAIMED_PROVENANCE" in block

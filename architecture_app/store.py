@@ -604,7 +604,15 @@ def upsert_component(
             set_=updates,
             # Only present for a scan write — a curated write has no condition
             # and overwrites as before.
-            where=(Component.edited_by == SCAN_PROVENANCE)
+            #
+            # UNCLAIMED_PROVENANCE is in here for the same reason scan.py's
+            # `curated` set excludes it: 'generated' is the column's
+            # server_default, not an ownership claim. Guarding on
+            # `== SCAN_PROVENANCE` alone made the two halves disagree — the
+            # scan would decide a row was fair game, issue the write, and the
+            # WHERE would silently drop it. `aw-workspace` stayed frozen
+            # through a rescan that reported success.
+            where=Component.edited_by.in_([SCAN_PROVENANCE, UNCLAIMED_PROVENANCE])
             if edited_by == SCAN_PROVENANCE else None,
         )
         s.execute(stmt)
