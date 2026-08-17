@@ -68,14 +68,33 @@ def run(args: list[str] | None = None) -> int:
             if pending:
                 print(f"\n{len(pending)} component(s) not provisioned: {', '.join(pending)}")
             return 0 if body.get("ok") else 1
-        payload = {"wait": True, "force": "--force" in rest}
+        # NOT wait=True. A cold pip over 152 pinned packages is minutes, and
+        # the edge cuts a request at ~30s — the first run of this came back as
+        # "502 workspace offline" while the install carried on server-side, so
+        # the CLI reported failure about something that was working. Start the
+        # job, then poll; each poll is a normal short request.
+        payload = {"force": "--force" in rest}
         slug = next((a for a in rest if not a.startswith("--")), None)
         if slug:
             payload["component"] = slug
-        status, body = local_client.request("POST", f"{_BASE}/provision/run", payload)
+        status, job = local_client.request("POST", f"{_BASE}/provision/run", payload)
         if status != 200:
-            print(f"provision failed: HTTP {status} {body}", file=sys.stderr)
+            print(f"provision failed: HTTP {status} {job}", file=sys.stderr)
             return 1
+        import time
+        print(f"provisioning ({job.get('id')}) — installing, this takes minutes…")
+        while True:
+            status, j = local_client.request("GET", f"{_BASE}/testcases/jobs/{job['id']}")
+            if status != 200:
+                print(f"lost track of the job: HTTP {status} {j}", file=sys.stderr)
+                return 1
+            if j.get("status") == "done":
+                break
+            time.sleep(5)
+        if j.get("error"):
+            print(f"provision failed: {j['error']}", file=sys.stderr)
+            return 1
+        body = j.get("result") or {}
         for row in body.get("provisioned", []):
             if row.get("ok"):
                 print(f"ok     {row['component']:28} {', '.join(row.get('files') or [])}")

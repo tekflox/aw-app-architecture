@@ -1123,3 +1123,13 @@ class TestDependencyProvisioning:
             body = "".join(open(os.path.join(root, f)).read() for f in files
                            if os.path.isfile(os.path.join(root, f)))
             assert needle in body, f"{repo}: {needle} not in {files}"
+
+    def test_the_provision_cli_polls_and_does_not_wait(self):
+        """A cold pip over 152 pinned packages is minutes; the edge cuts at
+        ~30s. The first run of this returned "502 workspace offline" while the
+        install carried on server-side — a failure reported about something
+        that was working."""
+        cli = open(os.path.join(REPO, "commands", "architecture.py")).read()
+        block = cli[cli.index('if sub == "provision":'):cli.index('if sub == "scan":')]
+        assert '"wait": True' not in block
+        assert "/testcases/jobs/" in block
