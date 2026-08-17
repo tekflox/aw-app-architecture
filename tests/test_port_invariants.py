@@ -436,12 +436,20 @@ class TestProvenance:
 
     def test_curated_write_stays_unconditional(self):
         """An agent or a person must still be able to correct any row,
-        including one the scan owns."""
+        including one the scan owns.
+
+        This used to assert the literal signature default `edited_by="generated"`
+        — a proxy for "the default provenance is not the scan's", from when the
+        parameter had a default at all. It is omittable now (a caller can write
+        one field without claiming the row), so the invariant is asserted where
+        it actually lives: the guard is applied ONLY to a scan write, so every
+        other write — curated or provenance-neutral — overwrites as before.
+        """
         from architecture_app import store
         assert store.SCAN_PROVENANCE == "scan"
         source = open(os.path.join(REPO, "architecture_app", "store.py")).read()
-        # the MCP tools' default provenance is NOT the scan's
-        assert 'edited_by: str = "generated"' in source
+        fn = source[source.index("def upsert_component("):source.index("_COMPONENT_FIELDS = {")]
+        assert "if edited_by == SCAN_PROVENANCE else None" in fn
 
     def test_list_components_projects_edited_by(self):
         """scan.py reads this to decide what to leave alone; if the projection
@@ -1210,3 +1218,44 @@ class TestProvisionedMeansRunnable:
         assert p.PROBE_TIMEOUT_S < p.PIP_TIMEOUT_S
         source = open(os.path.join(REPO, "architecture_app", "provision.py")).read()
         assert 'budget = PROBE_TIMEOUT_S if "-c" in cmd else PIP_TIMEOUT_S' in source
+
+
+class TestAPartialWriteDoesNotStealProvenance:
+    """`edited_by` decides whether the scan may overwrite a row. It defaulted
+    to "generated", so a caller that only wanted to set ONE field silently took
+    the row away from the scan: `provision` writing a test_cmd flipped 16
+    components out of `scan`, and since the scan only overwrites rows still
+    marked that way, their description/layer/technologies were frozen for good.
+
+    Same class of bug as the one _UNSET was introduced for, arriving from the
+    other direction: there, an omitted argument blanked a column; here, an
+    omitted argument rewrote the column that governs every future write."""
+
+    def test_edited_by_is_omittable(self):
+        import inspect
+        from architecture_app import store
+        sig = inspect.signature(store.upsert_component)
+        default = sig.parameters["edited_by"].default
+        assert default is store._UNSET, "a caller must be able to not claim authorship"
+
+    def test_an_omitted_edited_by_is_left_off_the_update(self):
+        source = open(os.path.join(REPO, "architecture_app", "store.py")).read()
+        fn = source[source.index("def upsert_component("):source.index("_COMPONENT_FIELDS = {")]
+        assert "updates.pop(\"edited_by\", None)" in fn
+
+    def test_a_new_row_still_gets_a_provenance(self):
+        """INSERT has to say something — the column is NOT NULL."""
+        source = open(os.path.join(REPO, "architecture_app", "store.py")).read()
+        fn = source[source.index("def upsert_component("):source.index("_COMPONENT_FIELDS = {")]
+        assert 'values["edited_by"] = "generated"' in fn
+
+    def test_an_explicit_scan_write_still_guards_itself(self):
+        source = open(os.path.join(REPO, "architecture_app", "store.py")).read()
+        fn = source[source.index("def upsert_component("):source.index("_COMPONENT_FIELDS = {")]
+        assert "where=(Component.edited_by == SCAN_PROVENANCE)" in fn
+
+    def test_provision_does_not_claim_authorship(self):
+        source = open(os.path.join(REPO, "architecture_app", "provision.py")).read()
+        fn = source[source.index("def _provision_one("):source.index("def _run(")]
+        assert "upsert_component(" in fn
+        assert "edited_by" not in fn, "provisioning is not an editorial act"

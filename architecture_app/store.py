@@ -521,7 +521,7 @@ def upsert_component(
     run_cmd=_UNSET,
     test_cmd=_UNSET,
     test_base_path=_UNSET,
-    edited_by: str = "generated",
+    edited_by=_UNSET,
 ) -> dict:
     """Create or update a component by its stable slug (idempotent).
 
@@ -553,8 +553,19 @@ def upsert_component(
     if "technologies" in supplied:
         supplied["technologies"] = supplied["technologies"] or []
 
+    # `edited_by` omitted means "I am not claiming authorship" — the row keeps
+    # whatever provenance it had. It used to default to "generated", so a
+    # caller that only wanted to set ONE field silently took the row away from
+    # the scan: `provision` writing a test_cmd flipped 16 components out of
+    # `scan`, and since the scan only overwrites rows still marked that way,
+    # their description/layer/technologies were frozen for good. A row is only
+    # created with "generated" because a brand-new row has to say something.
     with get_session() as s:
-        values = dict(slug=slug, name=name, edited_by=edited_by, **supplied)
+        values = dict(slug=slug, name=name, **supplied)
+        if edited_by is not _UNSET:
+            values["edited_by"] = edited_by
+        else:
+            values["edited_by"] = "generated"   # insert-time only; see below
         if parent_slug is not _UNSET:
             values["parent_id"] = _resolve_parent_id(s, parent_slug)
         stmt = pg_insert(Component).values(**values)
@@ -563,6 +574,10 @@ def upsert_component(
         # `test_cmd`, and used to blank it on every nightly run, so a command
         # someone set by hand survived exactly until 05:00.
         updates = {k: getattr(stmt.excluded, k) for k in values if k != "slug"}
+        if edited_by is _UNSET:
+            # Insert supplies it; UPDATE must not, or the row loses its
+            # provenance to a caller that never asked to own it.
+            updates.pop("edited_by", None)
         updates["updated_at"] = func.now()
         stmt = stmt.on_conflict_do_update(
             index_elements=["slug"],
