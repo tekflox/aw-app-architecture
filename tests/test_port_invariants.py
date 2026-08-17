@@ -531,15 +531,23 @@ class TestScanTaskShape:
                     f"unconditional increment: {line!r}"
                 )
 
-    def test_plain_repos_get_no_invented_description(self):
-        """A bare checkout states nothing about its purpose. Writing a
-        placeholder would be a guess that then reads as curated fact — and the
-        provenance rule would go on protecting it."""
+    def test_plain_repos_get_nothing_invented(self):
+        """A bare checkout can only be described in its own words. This used to
+        assert that the block passed no description or layer AT ALL, which was a
+        proxy for "nothing is invented" back when the only alternative to null
+        was a placeholder. Both are derived now, so the invariant is asserted
+        where it actually lives: the values come from `_declared`, never from a
+        literal in the loop, and `_declared` reads declarations rather than
+        guessing (see TestPlainReposDescribeThemselves)."""
         source = open(os.path.join(REPO, "architecture_app", "scan.py")).read()
         block = source[source.index("for repo_dir in _plain_repo_dirs():"):
                        source.index("# ---- pass 1")]
-        assert "description=" not in block
-        assert "layer=" not in block
+        assert "_declared(repo_dir)" in block
+        assert "description=description" in block
+        assert "layer=layer" in block
+        # No hardcoded prose or category reaching the catalog from here.
+        assert 'description="' not in block and "description='" not in block
+        assert 'layer="' not in block and "layer='" not in block
 
     def test_plain_repo_detection_requires_a_git_checkout(self):
         """`repos/` also holds scratch directories; a folder is not a repo."""
@@ -893,3 +901,94 @@ class TestRunsDoNotHoldTheRequest:
         assert j["status"] == "done"
         assert "no such testcase" in j["error"]
         assert j["result"] is None
+
+
+class TestPlainReposDescribeThemselves:
+    """A checked-out repo with no aw-app.json used to land in the catalog with
+    a null description and a null layer — 13 of 54 components, showing as
+    blanks in the tree with nothing to say why."""
+
+    _n = 0
+
+    def _decl(self, tmp_path, files):
+        TestPlainReposDescribeThemselves._n += 1
+        repo = tmp_path / f"some-repo-{self._n}"
+        repo.mkdir()
+        for name, body in files.items():
+            (repo / name).write_text(body)
+        from architecture_app import scan
+        return scan._declared(str(repo))
+
+    def test_a_declaration_file_wins(self, tmp_path):
+        desc, layer = self._decl(tmp_path, {
+            ".aw-component.json": '{"layer": "backend", "description": "Declared."}',
+            "package.json": '{"description": "From npm."}',
+        })
+        assert (desc, layer) == ("Declared.", "backend")
+
+    def test_package_json_then_pyproject_then_readme(self, tmp_path):
+        assert self._decl(tmp_path, {
+            "package.json": '{"description": "The node one."}'})[0] == "The node one."
+        assert self._decl(tmp_path, {
+            "pyproject.toml": '[project]\ndescription = "The python one."\n'})[0] == "The python one."
+        assert self._decl(tmp_path, {
+            "README.md": "# repo\n\nThe readme one, long enough to count.\n"})[0] \
+            == "The readme one, long enough to count."
+
+    def test_the_readme_paragraph_skips_badges_and_headings(self, tmp_path):
+        desc, _ = self._decl(tmp_path, {"README.md":
+            "# resume\n\n"
+            "[![Deploy](https://img.shields.io/x.svg)](https://example.test/a)\n\n"
+            "Professional academic resume with an interactive HTML version.\n\n"
+            "## Usage\n"})
+        assert desc == "Professional academic resume with an interactive HTML version."
+
+    def test_inline_links_collapse_to_their_text(self, tmp_path):
+        desc, _ = self._decl(tmp_path, {"README.md":
+            "# x\n\nThe BYOD client for [Agentic Workspace](https://aw.example.test) "
+            "you run yourself.\n"})
+        assert "https://" not in desc
+        assert "Agentic Workspace" in desc
+
+    def test_layer_is_never_guessed(self, tmp_path):
+        """description has three honest sources; layer has exactly one. A repo
+        that hasn't said keeps a null layer rather than being sorted into a
+        category by whatever files happen to be lying around."""
+        _, layer = self._decl(tmp_path, {
+            "package.json": '{"description": "A react app."}',
+            "README.md": "# x\n\nA frontend, obviously.\n"})
+        assert layer is None
+
+    def test_an_unknown_layer_is_refused_not_stored(self, tmp_path):
+        """A typo would otherwise create a fourteenth category containing one
+        component, which reads as a real distinction."""
+        _, layer = self._decl(tmp_path, {
+            ".aw-component.json": '{"layer": "backendd"}'})
+        assert layer is None
+
+    def test_an_essay_is_not_a_description(self, tmp_path):
+        desc, _ = self._decl(tmp_path, {"README.md": "# x\n\n" + "word " * 400})
+        assert len(desc) <= 400
+
+    def test_nothing_to_read_stays_null(self, tmp_path):
+        assert self._decl(tmp_path, {}) == (None, None)
+
+    def test_broken_json_does_not_stop_the_scan(self, tmp_path):
+        desc, layer = self._decl(tmp_path, {
+            ".aw-component.json": "{not json",
+            "README.md": "# x\n\nStill describes itself just fine.\n"})
+        assert desc == "Still describes itself just fine."
+        assert layer is None
+
+    def test_the_real_repos_now_resolve(self):
+        """The point of the exercise — these were the null ones."""
+        from architecture_app import scan
+        root = os.path.join(scan.workspace_root(), "repos")
+        for repo, layer in [("aw-backend", "backend"), ("aw-workspace-ui", "frontend"),
+                            ("aw-mobile", "mobile"), ("aw-remote-host", "cli")]:
+            path = os.path.join(root, repo)
+            if not os.path.isdir(path):
+                continue                      # not every checkout has every repo
+            desc, got = scan._declared(path)
+            assert got == layer, f"{repo}: {got!r}"
+            assert desc, f"{repo} has no description"

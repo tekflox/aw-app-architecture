@@ -46,6 +46,7 @@ import glob
 import json
 import logging
 import os
+import re
 
 from . import store as db
 from .discovery import workspace_root
@@ -161,6 +162,104 @@ def _plain_test_paths(repo_dir: str) -> str | None:
     return ",".join(paths) or None
 
 
+#: A repo with no ``aw-app.json`` can still describe itself, in this file at
+#: its root. Deliberately tiny — ``{"layer": "...", "description": "..."}`` —
+#: because its whole purpose is to be a DECLARATION rather than a guess, and
+#: a format with room for opinions invites them.
+_COMPONENT_DECL = ".aw-component.json"
+
+#: The layers already in use, so a typo in a hand-written declaration is
+#: caught here instead of quietly creating a fourteenth category of one.
+_KNOWN_LAYERS = {"app", "app-container", "backend", "frontend", "mobile",
+                 "cli", "platform", "infrastructure", "docs"}
+
+
+def _read_json(path: str) -> dict | None:
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else None
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _readme_summary(repo_dir: str) -> str | None:
+    """The first prose paragraph of README.md.
+
+    A README's opening paragraph is the repo stating what it is, in its own
+    words, maintained by whoever maintains the repo — the same kind of source
+    as a manifest field, just written for humans. That is why it is read here
+    and why nothing else in the file is: a heading is a name we already have,
+    and anything further down is detail that would need judgement to select.
+
+    Badges, blockquotes and the H1 are skipped; inline links collapse to their
+    text so a description doesn't carry raw URLs into the catalog.
+    """
+    path = os.path.join(repo_dir, "README.md")
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return None
+
+    para: list[str] = []
+    for raw in lines:
+        line = raw.strip()
+        if not para:
+            if not line or line.startswith(("#", ">", "[!", "![", "<!--", "---", "|")):
+                continue
+            para.append(line)
+        elif line:
+            para.append(line)
+        else:
+            break
+    if not para:
+        return None
+
+    text = " ".join(para)
+    text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)   # [text](url) -> text
+    text = re.sub(r"[*`_]", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    # Long enough to be a description, short enough to be one. A README whose
+    # first paragraph is an essay is not describing the repo in a sentence,
+    # and truncating mid-thought reads worse than declining.
+    return text[:400] if len(text) >= 20 else None
+
+
+def _declared(repo_dir: str) -> tuple[str | None, str | None]:
+    """``(description, layer)`` for a repo with no manifest — from what the
+    repo declares about itself, most authoritative first.
+
+    Nothing is inferred. ``layer`` is a taxonomy choice with no natural source
+    on disk, so it comes only from an explicit ``.aw-component.json``; a repo
+    that hasn't said stays null, which is honest. ``description`` has three
+    real sources, all of them the repo's own words about itself.
+    """
+    decl = _read_json(os.path.join(repo_dir, _COMPONENT_DECL)) or {}
+
+    layer = decl.get("layer")
+    if layer and layer not in _KNOWN_LAYERS:
+        _log.warning("scan: %s declares unknown layer %r — ignoring",
+                     os.path.basename(repo_dir), layer)
+        layer = None
+
+    description = decl.get("description")
+    if not description:
+        pkg = _read_json(os.path.join(repo_dir, "package.json")) or {}
+        description = pkg.get("description")
+    if not description:
+        try:
+            import tomllib
+            with open(os.path.join(repo_dir, "pyproject.toml"), "rb") as f:
+                description = (tomllib.load(f).get("project") or {}).get("description")
+        except (OSError, ImportError, ValueError):
+            pass
+    if not description:
+        description = _readme_summary(repo_dir)
+
+    return (description or None), (layer or None)
+
+
 def _read_manifest(repo_dir: str) -> dict | None:
     path = os.path.join(repo_dir, "aw-app.json")
     try:
@@ -243,10 +342,14 @@ def scan_workspace() -> dict:
     # ---- repos that aren't apps -------------------------------------------
     for repo_dir in _plain_repo_dirs():
         name = os.path.basename(repo_dir)
+        description, layer = _declared(repo_dir)
         if put(slug=name, name=name, repo=name,
-               # description and layer stay null on purpose: nothing in a bare
-               # checkout states them, and a placeholder would be a guess that
-               # then looks like curated fact.
+               # Both come from what the repo says about itself — a
+               # .aw-component.json, a package.json/pyproject description, or
+               # the README's opening paragraph. Nothing is guessed: a repo
+               # that declares no layer keeps a null one, because inventing a
+               # category here would look exactly like curated fact.
+               description=description, layer=layer,
                technologies=_detect_tech(repo_dir),
                test_base_path=_plain_test_paths(repo_dir)):
             created_components += 1
