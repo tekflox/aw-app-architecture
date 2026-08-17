@@ -110,11 +110,19 @@ raises instead of silently reaching for another engine when unbound; and that no
 module imports `src.*`. They are not a re-test of the data-access logic, which
 came across unchanged.
 
-## Known gap
+## Running tests
 
-Discovery walks `repos/` and `md_export` writes into `docs/architecture/`, and
-**no capability in the catalog expresses either**. `fs:workspace-data` covers
-only the app's own data dir. Tier-1 apps run in-process so nothing stops the
-reads today, but the manifest is therefore not a complete description of what
-this app touches. Worth an `fs:workspace-read` capability rather than leaving
-the gap implicit.
+The play button does not hold the request open — it starts a job and polls.
+See [docs/running-tests.md](docs/running-tests.md) for the job contract, the
+concurrency cap, and why job state is deliberately not persisted.
+
+## Filesystem reach
+
+Discovery walks `repos/` and `md_export` writes into each repo's
+`docs/architecture/`. That is declared: the manifest asks for
+**`fs:workspace-read`**, a capability added to the core catalog for exactly
+this (workspace v0.1.64). Before it existed, the `$AW_WORKSPACE_REPOS` and
+`$AW_WORKSPACE_SKILLS` volumes were ungated — any app could mount the user's
+entire checkout tree without asking — and this app's reads were legal only
+because a Tier-1 app runs in-process, so nothing was there to stop them. The
+manifest is now a complete description of what this app touches.
