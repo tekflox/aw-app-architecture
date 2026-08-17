@@ -1133,3 +1133,38 @@ class TestDependencyProvisioning:
         block = cli[cli.index('if sub == "provision":'):cli.index('if sub == "scan":')]
         assert '"wait": True' not in block
         assert "/testcases/jobs/" in block
+
+
+class TestAppSlugIsNotBlindlyPrefixed:
+    """Every manifest `id` is the bare name (`kb`, `git`) and the catalog names
+    the component `aw-app-<id>` to match its repo. aw-app-template's id is
+    already `aw-app-template`, so prefixing produced `aw-app-aw-app-template` —
+    a real row with its own docs file and its own provisioned venv, for a
+    component that does not exist."""
+
+    def test_a_bare_id_is_prefixed(self):
+        from architecture_app.scan import _app_slug
+        assert _app_slug("kb") == "aw-app-kb"
+
+    def test_an_already_prefixed_id_is_left_alone(self):
+        from architecture_app.scan import _app_slug
+        assert _app_slug("aw-app-template") == "aw-app-template"
+
+    def test_the_scan_goes_through_it(self):
+        source = open(os.path.join(REPO, "architecture_app", "scan.py")).read()
+        assert 'f"aw-app-{manifest[' not in source
+        assert '_app_slug(manifest["id"])' in source
+
+    def test_every_real_manifest_round_trips(self):
+        """Normalised, not special-cased: the next app to name itself this way
+        must not reintroduce the bug."""
+        import glob as _glob
+        from architecture_app.scan import _app_slug, workspace_root
+        for path in _glob.glob(os.path.join(workspace_root(), "repos", "aw-app-*", "aw-app.json")):
+            with open(path) as f:
+                app_id = json.load(f).get("id")
+            if not app_id:
+                continue
+            slug = _app_slug(app_id)
+            assert not slug.startswith("aw-app-aw-app-"), f"{path}: {slug}"
+            assert _app_slug(slug) == slug, "must be idempotent"

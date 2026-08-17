@@ -93,6 +93,18 @@ def _repo_dirs() -> list[str]:
     return sorted(glob.glob(os.path.join(root, "repos", "aw-app-*")))
 
 
+
+#: The catalog names an app component `aw-app-<id>`, matching the repo it lives
+#: in — every manifest `id` is the bare name (`kb`, `git`, `architecture`).
+#: Except aw-app-template's, which is `aw-app-template`, so blind prefixing
+#: produced the component `aw-app-aw-app-template`: a real row, with its own
+#: docs file and (once provisioning existed) its own venv, for a component that
+#: does not exist. Normalising rather than hardcoding the exception, because the
+#: next app to name itself this way should not reintroduce it.
+def _app_slug(app_id: str) -> str:
+    return app_id if app_id.startswith("aw-app-") else f"aw-app-{app_id}"
+
+
 def _plain_repo_dirs() -> list[str]:
     """Checked-out repos that are NOT apps — aw-backend, aw-workspace-ui,
     aw-mobile, agentic-workspace, and so on.
@@ -367,7 +379,7 @@ def scan_workspace() -> dict:
         manifest = _read_manifest(repo_dir)
         if not manifest or not manifest.get("id"):
             continue
-        slug = f"aw-app-{manifest['id']}"
+        slug = _app_slug(manifest["id"])
         if put(slug=slug, name=manifest.get("name") or manifest["id"],
                repo=os.path.basename(repo_dir),
                layer=_TIER_LAYER.get(manifest.get("tier"), "app"),
