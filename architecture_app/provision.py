@@ -53,6 +53,10 @@ CONVENTIONAL = ("requirements-dev.txt", "requirements-test.txt")
 #: host-mounted, so they outlive the container that built them.
 VENV_ROOT = os.path.join(".aw-workspace", "test-venvs")
 
+#: An interpreter liveness probe is a fork, not a build — keep it short so
+#: `--check` (and therefore `doctor`) stays fast enough to run casually.
+PROBE_TIMEOUT_S = 15
+
 #: How long a single pip install may take. A cold numpy build on ARM is
 #: minutes, not seconds, and a provision that gets killed halfway leaves a venv
 #: that looks present and isn't.
@@ -98,6 +102,29 @@ def venv_python(slug: str) -> str:
     return os.path.join(venv_dir(slug), "bin", "python")
 
 
+
+def _interpreter_works(slug: str) -> bool:
+    """Can this venv's python actually RUN — not merely exist on disk.
+
+    The distinction is the whole point. These venvs live under
+    ``AW_WORKSPACE_HOME``, which is host-mounted, so they survive container
+    recreation — which is exactly why nothing needs reinstalling on every boot.
+    But a venv's ``bin/python`` is a SYMLINK to the interpreter that built it.
+    Rebuild the image on a new Python, or move where it lives, and every one of
+    these becomes a dangling link: present, listed, and unrunnable.
+
+    Checking ``os.path.isfile`` would call that provisioned. This workspace's
+    signature failure is a presence check posing as a health check, and a venv
+    that survived the mount but not the image is precisely that shape — so the
+    check spends a subprocess to be sure.
+    """
+    python = venv_python(slug)
+    if not os.path.isfile(python):
+        return False
+    rc, _ = _run([python, "-c", "import sys; sys.exit(0)"])
+    return rc == 0
+
+
 def _components_with_requirements() -> list[dict[str, Any]]:
     """Components whose repo offers a requirements file. Only ones that have
     testcases: provisioning a venv for a component nothing will ever run is
@@ -129,7 +156,7 @@ def check() -> dict[str, Any]:
             "requirement_files": c["requirement_files"],
             "missing_requirement_files": missing_files,
             "venv": venv_dir(slug),
-            "provisioned": os.path.isfile(venv_python(slug)),
+            "provisioned": _interpreter_works(slug),
         })
     pending = [r for r in rows if not r["provisioned"] or r["missing_requirement_files"]]
     return {"components": rows, "pending": [r["component"] for r in pending],
@@ -198,10 +225,12 @@ def _provision_one(component: dict, *, force: bool) -> dict[str, Any]:
 
 def _run(cmd: list[str]) -> tuple[int, str]:
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True,
-                           timeout=PIP_TIMEOUT_S)
+        # A liveness probe must not inherit the pip budget: a hung interpreter
+        # would stall `doctor` for 15 minutes.
+        budget = PROBE_TIMEOUT_S if "-c" in cmd else PIP_TIMEOUT_S
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=budget)
         return p.returncode, (p.stdout or "") + (p.stderr or "")
     except subprocess.TimeoutExpired:
-        return 124, f"timed out after {PIP_TIMEOUT_S}s: {' '.join(cmd[:4])}…"
+        return 124, f"timed out: {' '.join(cmd[:4])}…"
     except OSError as exc:
         return 1, str(exc)

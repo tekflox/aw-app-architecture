@@ -1168,3 +1168,45 @@ class TestAppSlugIsNotBlindlyPrefixed:
             slug = _app_slug(app_id)
             assert not slug.startswith("aw-app-aw-app-"), f"{path}: {slug}"
             assert _app_slug(slug) == slug, "must be idempotent"
+
+
+class TestProvisionedMeansRunnable:
+    """The venvs live under AW_WORKSPACE_HOME, which is host-mounted, so they
+    survive container recreation — which is why nothing needs reinstalling on
+    every boot. But `bin/python` is a SYMLINK to the interpreter that built it:
+    rebuild the image on a new Python and every one becomes present, listed and
+    unrunnable. `os.path.isfile` would call that provisioned."""
+
+    def test_the_check_executes_rather_than_stats(self):
+        source = open(os.path.join(REPO, "architecture_app", "provision.py")).read()
+        fn = source[source.index("def _interpreter_works("):
+                    source.index("def _components_with_requirements(")]
+        assert "_run([python," in fn
+        assert "rc == 0" in fn
+        check = source[source.index("def check("):source.index("def provision(")]
+        assert "_interpreter_works(slug)" in check
+        assert "os.path.isfile(venv_python(slug))" not in check
+
+    def test_a_dangling_interpreter_is_not_provisioned(self, tmp_path, monkeypatch):
+        from architecture_app import provision as p
+        monkeypatch.setattr(p, "workspace_root", lambda: str(tmp_path))
+        bindir = tmp_path / p.VENV_ROOT / "ghost" / "bin"
+        bindir.mkdir(parents=True)
+        (bindir / "python").symlink_to(tmp_path / "no-such-interpreter")
+        assert not p._interpreter_works("ghost")
+
+    def test_a_working_interpreter_is_provisioned(self, tmp_path, monkeypatch):
+        import sys as _sys
+        from architecture_app import provision as p
+        monkeypatch.setattr(p, "workspace_root", lambda: str(tmp_path))
+        bindir = tmp_path / p.VENV_ROOT / "real" / "bin"
+        bindir.mkdir(parents=True)
+        (bindir / "python").symlink_to(_sys.executable)
+        assert p._interpreter_works("real")
+
+    def test_the_probe_does_not_inherit_the_pip_budget(self):
+        """A hung interpreter must not stall doctor for fifteen minutes."""
+        from architecture_app import provision as p
+        assert p.PROBE_TIMEOUT_S < p.PIP_TIMEOUT_S
+        source = open(os.path.join(REPO, "architecture_app", "provision.py")).read()
+        assert 'budget = PROBE_TIMEOUT_S if "-c" in cmd else PIP_TIMEOUT_S' in source
