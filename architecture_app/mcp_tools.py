@@ -316,7 +316,7 @@ def _dispatch(tool: str, a: dict) -> dict:
                     "docs_dir", "run_cmd", "test_cmd", "test_base_path")
         return _ok(db.upsert_component(
             a["slug"], a["name"],
-            edited_by=a.get("edited_by", "generated"),
+            edited_by=a.get("edited_by", db.AGENT_PROVENANCE),
             **{k: a[k] for k in optional if k in a}))
     if tool == "update_component":
         fields = {k: v for k, v in a.items() if k != "slug"}

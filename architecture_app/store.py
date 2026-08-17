@@ -65,6 +65,23 @@ TABLE_PREFIX = "app__architecture__"
 #: ``upsert_component``.
 SCAN_PROVENANCE = "scan"
 
+#: What a row says when NOBODY has claimed it — the column's server_default,
+#: and what an INSERT falls back to. It is NOT an ownership claim, and the
+#: distinction is load-bearing: `curated` (in scan.py) used to be "anything
+#: that isn't 'scan'", so a row created by any path that simply didn't mention
+#: provenance was frozen out of the scan forever, indistinguishable from one a
+#: person had deliberately edited. `aw-workspace` sat like that, carrying the
+#: scan's own hardcoded description, permanently un-updatable.
+#:
+#: An actual edit stamps AGENT_PROVENANCE (or a caller-supplied name). The word
+#: matters: "generated" is what a machine produces, so it can never mean "a
+#: human took this over".
+UNCLAIMED_PROVENANCE = "generated"
+
+#: The MCP tools' default — a write made deliberately, through a tool, by an
+#: agent or a person. This is what makes the scan back off.
+AGENT_PROVENANCE = "agent"
+
 #: Sentinel for "this caller has no opinion about that column".
 #: ``upsert_component`` needs to tell an explicit ``None`` (clear the field)
 #: apart from an omitted argument (leave whatever is there). Without it every
@@ -531,9 +548,12 @@ def upsert_component(
     * ``edited_by="scan"`` — a machine-derived write (see ``scan.py``). It
       only updates a row that is *still* ``'scan'``. The moment anything else
       touches that component, the scan stops overwriting it, forever.
-    * anything else (``'generated'`` — the MCP tools' default — or an explicit
-      ``'curated'``) — a deliberate write by an agent or a person. Overwrites,
-      and stamps the row so the scan backs off.
+    * ``'generated'`` — nobody has claimed it (the column's server_default).
+      The scan may own such a row: it is what an INSERT that never mentioned
+      provenance leaves behind, not a decision anyone made.
+    * anything else (``'agent'`` — the MCP tools' default — or an explicit
+      name) — a deliberate write by an agent or a person. Overwrites, and
+      stamps the row so the scan backs off.
 
     Without that rule a scan on a schedule silently erases every description
     anyone writes, once per tick. The column existed from the start and nothing

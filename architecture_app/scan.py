@@ -311,9 +311,15 @@ def scan_workspace() -> dict:
     root = workspace_root()
     created_components = skipped_curated = connections = tools = 0
 
+    # "Not the scan" is not the same as "someone owns this". The column's
+    # server_default is 'generated', so treating that as curated froze every
+    # row created by a path that simply never mentioned provenance — including
+    # aw-workspace, which sat carrying this module's own hardcoded description
+    # and could never be updated by the thing that wrote it.
+    _unowned = {db.SCAN_PROVENANCE, db.UNCLAIMED_PROVENANCE}
     curated = {
         c["slug"] for c in db.list_components()
-        if c.get("edited_by") and c["edited_by"] != db.SCAN_PROVENANCE
+        if c.get("edited_by") and c["edited_by"] not in _unowned
     }
 
     def put(slug: str, **kw) -> bool:

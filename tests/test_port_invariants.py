@@ -1259,3 +1259,49 @@ class TestAPartialWriteDoesNotStealProvenance:
         fn = source[source.index("def _provision_one("):source.index("def _run(")]
         assert "upsert_component(" in fn
         assert "edited_by" not in fn, "provisioning is not an editorial act"
+
+
+class TestUnclaimedIsNotCurated:
+    """`curated` was "any edited_by that isn't 'scan'". But 'generated' is the
+    column's server_default — what an INSERT that never mentioned provenance
+    leaves behind, not a decision anyone made. So a row created by such a path
+    was frozen out of the scan forever, indistinguishable from one a person had
+    deliberately edited. `aw-workspace` sat exactly like that, carrying scan.py's
+    own hardcoded description and unable to be updated by the thing that wrote
+    it."""
+
+    def test_the_three_values_are_distinct(self):
+        from architecture_app import store as db
+        assert len({db.SCAN_PROVENANCE, db.UNCLAIMED_PROVENANCE,
+                    db.AGENT_PROVENANCE}) == 3
+
+    def test_unclaimed_matches_the_column_default(self):
+        """If the model's server_default drifts from UNCLAIMED_PROVENANCE, rows
+        start arriving with a value nothing recognises — and the scan would
+        treat them as owned again, silently."""
+        source = open(os.path.join(REPO, "architecture_app", "store.py")).read()
+        model = source[source.index("class Component(Base):"):source.index("class Requirement")]
+        assert "server_default=text(\"'generated'\")" in model
+        from architecture_app import store as db
+        assert db.UNCLAIMED_PROVENANCE == "generated"
+
+    def test_the_scan_treats_unclaimed_as_its_own(self):
+        source = open(os.path.join(REPO, "architecture_app", "scan.py")).read()
+        block = source[source.index("_unowned = {"):source.index("def put(")]
+        assert "db.UNCLAIMED_PROVENANCE" in block
+        assert "db.SCAN_PROVENANCE" in block
+        assert "not in _unowned" in block
+
+    def test_an_mcp_edit_still_takes_the_row(self):
+        """The whole point of provenance: an agent's write must stop the
+        nightly scan from erasing it."""
+        source = open(os.path.join(REPO, "architecture_app", "mcp_tools.py")).read()
+        assert 'a.get("edited_by", db.AGENT_PROVENANCE)' in source
+        assert '"generated"' not in source.split("def _dispatch")[1][:4000]
+
+    def test_agent_is_not_in_the_unowned_set(self):
+        """Otherwise an agent's edit would be silently overwritten at 05:00."""
+        from architecture_app import store as db
+        source = open(os.path.join(REPO, "architecture_app", "scan.py")).read()
+        block = source[source.index("_unowned = {"):source.index("curated = {")]
+        assert "AGENT_PROVENANCE" not in block
