@@ -23,6 +23,8 @@ Usage:
     aw-workspace-cli architecture components          # list, with derived health
     aw-workspace-cli architecture tests [<slug>]      # traceability rows
     aw-workspace-cli architecture run <file_path>     # run one testcase
+    aw-workspace-cli architecture provision [<slug>]  # install declared test deps
+    aw-workspace-cli architecture provision --check   # report, install nothing
     aw-workspace-cli architecture regenerate-docs     # rewrite docs/architecture/
 """
 from __future__ import annotations
@@ -49,6 +51,37 @@ def run(args: list[str] | None = None) -> int:
     from src.cli import local_client
 
     sub, rest = args[0], args[1:]
+
+    if sub == "provision":
+        check = "--check" in rest
+        if check:
+            status, body = local_client.request("GET", f"{_BASE}/provision/check")
+            if status != 200:
+                print(f"provision check failed: HTTP {status} {body}", file=sys.stderr)
+                return 1
+            for row in body.get("components", []):
+                state = "ok" if row["provisioned"] else "MISSING"
+                bad = row.get("missing_requirement_files") or []
+                print(f"{state:8} {row['component']:28} {', '.join(row['requirement_files'])}"
+                      + (f"   [declared but absent: {', '.join(bad)}]" if bad else ""))
+            pending = body.get("pending") or []
+            if pending:
+                print(f"\n{len(pending)} component(s) not provisioned: {', '.join(pending)}")
+            return 0 if body.get("ok") else 1
+        payload = {"wait": True, "force": "--force" in rest}
+        slug = next((a for a in rest if not a.startswith("--")), None)
+        if slug:
+            payload["component"] = slug
+        status, body = local_client.request("POST", f"{_BASE}/provision/run", payload)
+        if status != 200:
+            print(f"provision failed: HTTP {status} {body}", file=sys.stderr)
+            return 1
+        for row in body.get("provisioned", []):
+            if row.get("ok"):
+                print(f"ok     {row['component']:28} {', '.join(row.get('files') or [])}")
+            else:
+                print(f"FAILED {row['component']:28} {row.get('error','')[:200]}", file=sys.stderr)
+        return 0 if body.get("ok") else 1
 
     if sub == "scan":
         status, body = local_client.request("POST", f"{_BASE}/scan/run", {})

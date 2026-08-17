@@ -23,6 +23,7 @@ way should say so rather than have this module guess.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 
@@ -92,6 +93,27 @@ def _classify(returncode: int, command: str) -> str:
     if "pytest" in command and returncode in _PYTEST_NOT_A_RESULT:
         return "unknown"
     return "fail"
+
+
+
+#: A collection error naming a module pytest could not import. Only consulted
+#: when the exit code already said NO VERDICT — a suite that ran and failed may
+#: well print this string from inside a test that is *asserting* on it, and
+#: that is a real failure, not a missing dependency.
+_MISSING_MODULE_RE = re.compile(
+    r"(?:ModuleNotFoundError|ImportError): No module named [\'\"]([^\'\"]+)[\'\"]")
+
+
+def _missing_module(status: str, output: str) -> list[str]:
+    if status != "unknown":
+        return []
+    seen, out = set(), []
+    for name in _MISSING_MODULE_RE.findall(output or ""):
+        top = name.split(".")[0]
+        if top not in seen:
+            seen.add(top)
+            out.append(top)
+    return out
 
 
 def run_testcase(file_path: str, timeout: int = 300) -> dict:
@@ -166,6 +188,22 @@ def run_testcase(file_path: str, timeout: int = 300) -> dict:
         output = (proc.stdout or "") + (proc.stderr or "")
     except subprocess.TimeoutExpired:
         status, output = "fail", f"timeout after {timeout}s"
+
+    missing = _missing_module(status, output)
+    if missing:
+        # A package the environment lacks is not a verdict about the code, and
+        # "unknown" is where such a test then sat forever with nothing saying
+        # why. Naming the module turns a silent nothing into a fixable line —
+        # and `architecture provision` is what fixes it, from the requirements
+        # file the repo already ships.
+        db.update_testcase_result(file_path, "unknown")
+        return {
+            "file_path": file_path, "status": "deps_missing", "missing": missing,
+            "output": (f"missing module(s): {', '.join(missing)}. This is the "
+                       f"environment, not the test — run `aw-workspace-cli "
+                       f"architecture provision` to install what this "
+                       f"component's repo declares.\n\n") + output[-_MAX_OUTPUT_CHARS:],
+        }
 
     db.update_testcase_result(file_path, status)
     return {"file_path": file_path, "status": status, "output": output[-_MAX_OUTPUT_CHARS:]}

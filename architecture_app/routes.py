@@ -46,6 +46,7 @@ from . import discovery
 from . import jobs
 from . import md_export as md
 from . import mcp_tools
+from . import provision as prov
 from . import scan
 from . import store as db
 from .test_runner import run_testcase
@@ -171,6 +172,22 @@ def build_routes(config: dict | None = None) -> FastAPI:
         # Reads every aw-app.json in repos/ — filesystem + JSON only, no
         # network, no LLM. Off the request thread because it walks the tree.
         return await run_in_threadpool(scan.scan_workspace)
+
+    @app.get("/provision/check")
+    async def provision_check():
+        # Reads only. This is what `doctor` calls: a suite that cannot collect
+        # is silent degradation, and nothing else in the workspace notices it.
+        return await run_in_threadpool(prov.check)
+
+    @app.post("/provision/run")
+    async def provision_run(body: dict | None = None):
+        # pip against a cold cache is minutes, so this goes through the same
+        # job registry the test runs use rather than holding the request.
+        body = body or {}
+        slug, force = body.get("component"), bool(body.get("force"))
+        if not body.get("wait"):
+            return jobs.start(slug or "*", lambda _fp: prov.provision(slug, force=force))
+        return await run_in_threadpool(lambda: prov.provision(slug, force=force))
 
     @app.post("/docs/regenerate")
     async def regenerate_docs():

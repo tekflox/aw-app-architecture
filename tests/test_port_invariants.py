@@ -1033,3 +1033,93 @@ class TestMarkingSkipRetiresTheOldVerdict:
         runner = open(os.path.join(REPO, "architecture_app", "test_runner.py")).read()
         assert runner.count('"SKIP:"') == 0
         assert "SKIP_PREFIX = db.SKIP_PREFIX" in runner
+
+
+class TestDependencyProvisioning:
+    """A suite blocked on one missing package reported as a collection error,
+    pytest exited 2, the runner correctly refused to call that a failure, and
+    the row sat at `unknown` forever with nothing saying which package. The
+    manual fix — pip into the workspace venv — died with the next container
+    recreation."""
+
+    def test_missing_module_is_named_not_swallowed(self):
+        from architecture_app import test_runner as t
+        out = "E   ModuleNotFoundError: No module named 'watchfiles'"
+        assert t._missing_module("unknown", out) == ["watchfiles"]
+
+    def test_submodules_collapse_to_the_distribution(self):
+        from architecture_app import test_runner as t
+        out = ("ModuleNotFoundError: No module named 'a.b'\n"
+               "ModuleNotFoundError: No module named 'a.c'\n")
+        assert t._missing_module("unknown", out) == ["a"]
+
+    def test_a_real_failure_is_never_reinterpreted(self):
+        """A suite that RAN and failed may print this string from a test that
+        asserts on it. Only a no-verdict exit code is eligible."""
+        from architecture_app import test_runner as t
+        out = "ModuleNotFoundError: No module named 'x'"
+        assert t._missing_module("fail", out) == []
+        assert t._missing_module("passing", out) == []
+
+    def test_deps_missing_does_not_record_a_verdict(self):
+        source = open(os.path.join(REPO, "architecture_app", "test_runner.py")).read()
+        branch = source[source.index("missing = _missing_module("):]
+        branch = branch[:branch.index("db.update_testcase_result(file_path, status)")]
+        assert '"deps_missing"' in branch
+        assert 'update_testcase_result(file_path, "unknown")' in branch
+
+    def test_the_workspace_venv_is_never_the_target(self):
+        """aw-backend's requirements file pins 152 packages. Installing that
+        into the venv this workspace RUNS on lets pip resolve upgrades of the
+        workspace's own dependencies to satisfy a test suite."""
+        source = open(os.path.join(REPO, "architecture_app", "provision.py")).read()
+        fn = source[source.index("def _provision_one("):source.index("def _run(")]
+        assert "venv_python(slug)" in fn
+        assert "sys.executable, \"-m\", \"pip\"" not in fn
+
+    def test_venvs_live_where_they_survive_a_recreation(self):
+        from architecture_app import provision as p
+        assert p.VENV_ROOT.startswith(".aw-workspace")
+
+    def test_declaration_beats_convention(self, tmp_path, monkeypatch):
+        from architecture_app import provision as p
+        repos = tmp_path / "repos" / "some-repo"
+        repos.mkdir(parents=True)
+        (repos / "requirements-dev.txt").write_text("pytest\n")
+        monkeypatch.setattr(p, "workspace_root", lambda: str(tmp_path))
+        assert p.requirement_files("some-repo") == ["requirements-dev.txt"]
+        (repos / ".aw-component.json").write_text('{"test_requires": ["a/b.txt"]}')
+        assert p.requirement_files("some-repo") == ["a/b.txt"]
+
+    def test_a_declared_file_that_is_absent_is_reported_not_dropped(self, tmp_path, monkeypatch):
+        """A typo in a declaration whose whole purpose is to be machine-read
+        must not read as 'this repo declares nothing'."""
+        from architecture_app import provision as p
+        repos = tmp_path / "repos" / "some-repo"
+        repos.mkdir(parents=True)
+        (repos / ".aw-component.json").write_text('{"test_requires": ["nope.txt"]}')
+        monkeypatch.setattr(p, "workspace_root", lambda: str(tmp_path))
+        assert p.requirement_files("some-repo") == ["nope.txt"]
+
+    def test_broken_declaration_does_not_stop_provisioning(self, tmp_path, monkeypatch):
+        from architecture_app import provision as p
+        repos = tmp_path / "repos" / "some-repo"
+        repos.mkdir(parents=True)
+        (repos / ".aw-component.json").write_text("{not json")
+        (repos / "requirements-dev.txt").write_text("pytest\n")
+        monkeypatch.setattr(p, "workspace_root", lambda: str(tmp_path))
+        assert p.requirement_files("some-repo") == ["requirements-dev.txt"]
+
+    def test_the_two_real_repos_declare_what_blocked_them(self):
+        """watchfiles blocked 76 aw-backend testcases, pytest-playwright 3
+        aw-console ones — both already in a requirements file nobody read."""
+        from architecture_app import provision as p
+        for repo, needle in [("aw-backend", "watchfiles"), ("aw-console", "pytest-playwright")]:
+            root = os.path.join(p.workspace_root(), "repos", repo)
+            if not os.path.isdir(root):
+                continue
+            files = p.requirement_files(repo)
+            assert files, f"{repo} declares no test requirements"
+            body = "".join(open(os.path.join(root, f)).read() for f in files
+                           if os.path.isfile(os.path.join(root, f)))
+            assert needle in body, f"{repo}: {needle} not in {files}"
