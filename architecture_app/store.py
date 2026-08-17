@@ -352,6 +352,17 @@ class VComponentHealth(ViewBase):
 
 # The two derived-health VIEWs are dropped+recreated on every ensure so their
 # definition always tracks this file. Health is DERIVED here, never stored.
+#
+# v_component_health ROLLS UP the subtree, not just a component's own
+# requirements. Without that a parent read 'planned' while a child sat
+# 'broken' — the tree's whole purpose is that a glance at the root tells you
+# whether anything underneath is on fire, and the un-rolled version made the
+# root the least informative row in the view.
+#
+# `depth < 32` is a cycle guard, not a modelling limit. parent_id is a
+# self-referencing FK with nothing stopping a -> b -> a, and a WITH RECURSIVE
+# over a cycle does not terminate: one bad row would hang every query that
+# touches component health, including the window's first paint.
 _VIEWS = """
 CREATE OR REPLACE VIEW {table:app__architecture__v_requirement_health} AS
 SELECT
@@ -372,8 +383,16 @@ SELECT
 FROM {table:app__architecture__requirement} r;
 
 CREATE OR REPLACE VIEW {table:app__architecture__v_component_health} AS
+WITH RECURSIVE subtree(root_id, node_id, depth) AS (
+    SELECT id, id, 0 FROM {table:app__architecture__component}
+  UNION ALL
+    SELECT s.root_id, c.id, s.depth + 1
+    FROM subtree s
+    JOIN {table:app__architecture__component} c ON c.parent_id = s.node_id
+    WHERE s.depth < 32
+)
 SELECT
-  c.id AS component_id,
+  s.root_id AS component_id,
   CASE
     WHEN count(r.id) = 0                        THEN 'planned'
     WHEN bool_or(h.health = 'broken')           THEN 'broken'
@@ -381,10 +400,10 @@ SELECT
     WHEN bool_or(h.health = 'implemented')      THEN 'partial'
     ELSE 'planned'
   END AS health
-FROM {table:app__architecture__component} c
-LEFT JOIN {table:app__architecture__requirement} r ON r.component_id = c.id
+FROM subtree s
+LEFT JOIN {table:app__architecture__requirement} r ON r.component_id = s.node_id
 LEFT JOIN {table:app__architecture__v_requirement_health} h ON h.requirement_id = r.id
-GROUP BY c.id;
+GROUP BY s.root_id;
 """
 
 # Idempotent migrations for tables that predate a field/constraint (safe no-ops).

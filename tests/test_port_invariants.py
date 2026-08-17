@@ -774,3 +774,39 @@ class TestNotRunnableIsRecordedNotHidden:
         skip_branch = source[source.index("if explicit.startswith(SKIP_PREFIX):"):
                              source.index("run_command = explicit or")]
         assert "update_testcase_result" not in skip_branch
+
+
+class TestComponentHealthRollsUp:
+    """A parent read `planned` while a child sat `broken`. The tree exists so a
+    glance at the root tells you whether anything underneath is on fire; the
+    un-rolled view made the root the least informative row in it."""
+
+    def _view(self):
+        return store._VIEWS[store._VIEWS.index("v_component_health"):]
+
+    def test_the_view_walks_the_subtree(self):
+        v = self._view()
+        assert "WITH RECURSIVE subtree" in v
+        assert "c.parent_id = s.node_id" in v
+        assert "GROUP BY s.root_id" in v
+
+    def test_requirements_are_joined_on_the_subtree_not_the_component(self):
+        """Joining on c.id again would walk the tree and then ignore it."""
+        v = self._view()
+        assert "r.component_id = s.node_id" in v
+
+    def test_there_is_a_cycle_guard(self):
+        """parent_id is a self-referencing FK with nothing preventing
+        a -> b -> a, and WITH RECURSIVE over a cycle does not terminate. One
+        bad row would hang every query touching component health, including
+        the window's first paint."""
+        v = self._view()
+        assert re.search(r"WHERE\s+s\.depth\s*<\s*\d+", v), "no depth bound on the recursion"
+
+    def test_broken_still_wins_over_implemented(self):
+        """Order matters: a subtree with one broken and many implemented
+        requirements must read broken, not partial."""
+        v = self._view()
+        broken = v.index("'broken'")
+        implemented = v.index("bool_and(h.health = 'implemented')")
+        assert broken < implemented
