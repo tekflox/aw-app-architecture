@@ -114,7 +114,7 @@ def run(args: list[str] | None = None) -> int:
             print("run needs a file_path", file=sys.stderr)
             return 2
         status, body = local_client.request(
-            "POST", f"{_BASE}/testcases/run", {"file_path": rest[0]})
+            "POST", f"{_BASE}/testcases/run", {"file_path": rest[0], "wait": True})
         if status != 200:
             print(f"HTTP {status} {body}", file=sys.stderr)
             return 1

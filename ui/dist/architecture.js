@@ -1,4 +1,4 @@
-const j = "architecture", I = "architecture.main";
+const J = "architecture", A = "architecture.main";
 const s = {
   title: 14,
   nav: 13,
@@ -6,21 +6,22 @@ const s = {
   row: 11.5,
   mono: 11,
   label: 10
-}, A = {
+}, H = {
   implemented: "#4ade80",
   passing: "#4ade80",
+  running: "#58a6ff",
   partial: "#fbbf24",
   broken: "#f87171",
   fail: "#f87171",
   not_implemented: "var(--color-text-muted)",
   planned: "var(--color-text-muted)",
   unknown: "var(--color-text-muted)"
-}, U = [
+}, K = [
   { id: "tests", label: "Tests" },
   { id: "requirements", label: "Requirements" },
   { id: "debt", label: "Debt & Bugs" },
   { id: "detail", label: "Detail" }
-], x = {
+], w = {
   // Unicode symbols (⟳ ▶ ⚑ ▾ ✕ ↗) render as tofu boxes here — the browser
   // container's font stack has no glyph for them. Inline SVG doesn't care
   // what fonts the image ships.
@@ -56,30 +57,30 @@ const s = {
     cursor: "pointer"
   }
 };
-function J(e) {
-  const { useState: p, useEffect: S, useCallback: z, useMemo: R } = e.React, L = (t, r) => e.sdk.api.fetch(`/api/apps/${j}${t}`, r), _ = async (t) => {
-    const r = await L(t);
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json();
-  }, M = async (t, r) => {
-    const a = await L(t, {
+function G(e) {
+  const { useState: p, useEffect: _, useCallback: R, useMemo: L } = e.React, M = (t, n) => e.sdk.api.fetch(`/api/apps/${J}${t}`, n), k = async (t) => {
+    const n = await M(t);
+    if (!n.ok) throw new Error(`HTTP ${n.status}`);
+    return n.json();
+  }, B = async (t, n) => {
+    const a = await M(t, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(r || {})
+      body: JSON.stringify(n || {})
     });
     if (!a.ok) throw new Error(`HTTP ${a.status}`);
     return a.json();
   };
   function C({ value: t }) {
-    const r = t || "unknown";
-    return /* @__PURE__ */ e.h("span", { style: { ...o.label, color: A[r] || A.unknown, fontWeight: 700 } }, r.replace(/_/g, " "));
+    const n = t || "unknown";
+    return /* @__PURE__ */ e.h("span", { style: { ...o.label, color: H[n] || H.unknown, fontWeight: 700 } }, n.replace(/_/g, " "));
   }
-  function v({ d: t, size: r = 12, color: a = "currentColor", fill: d = "none", style: l }) {
+  function v({ d: t, size: n = 12, color: a = "currentColor", fill: d = "none", style: l }) {
     return /* @__PURE__ */ e.h(
       "svg",
       {
-        width: r,
-        height: r,
+        width: n,
+        height: n,
         viewBox: "0 0 24 24",
         fill: d,
         stroke: a,
@@ -100,24 +101,24 @@ function J(e) {
       lineHeight: 1.6
     } }, t);
   }
-  function H(t) {
-    const r = new Map(t.map((l) => [l.slug, { ...l, children: [] }])), a = [];
-    for (const l of r.values()) {
-      const n = l.parent_slug ? r.get(l.parent_slug) : null;
-      n ? n.children.push(l) : a.push(l);
+  function O(t) {
+    const n = new Map(t.map((l) => [l.slug, { ...l, children: [] }])), a = [];
+    for (const l of n.values()) {
+      const r = l.parent_slug ? n.get(l.parent_slug) : null;
+      r ? r.children.push(l) : a.push(l);
     }
-    const d = (l) => (l.sort((n, i) => n.name.localeCompare(i.name)), l.forEach((n) => d(n.children)), l);
+    const d = (l) => (l.sort((r, i) => r.name.localeCompare(i.name)), l.forEach((r) => d(r.children)), l);
     return d(a);
   }
-  function B({ node: t, depth: r, selected: a, onSelect: d }) {
-    const [l, n] = p(!0), i = a === t.slug;
+  function I({ node: t, depth: n, selected: a, onSelect: d }) {
+    const [l, r] = p(!0), i = a === t.slug;
     return /* @__PURE__ */ e.h("div", null, /* @__PURE__ */ e.h(
       "div",
       {
         onClick: () => d(t.slug),
         className: "flex items-center gap-1 cursor-pointer",
         style: {
-          paddingLeft: 6 + r * 12,
+          paddingLeft: 6 + n * 12,
           paddingRight: 6,
           paddingTop: 3,
           paddingBottom: 3,
@@ -131,7 +132,7 @@ function J(e) {
         "span",
         {
           onClick: (h) => {
-            h.stopPropagation(), n(!l);
+            h.stopPropagation(), r(!l);
           },
           style: {
             width: 12,
@@ -141,41 +142,52 @@ function J(e) {
             color: "var(--color-text-muted)"
           }
         },
-        t.children.length > 0 ? /* @__PURE__ */ e.h(v, { d: l ? x.chevronDown : x.chevronRight, size: 11 }) : null
+        t.children.length > 0 ? /* @__PURE__ */ e.h(v, { d: l ? w.chevronDown : w.chevronRight, size: 11 }) : null
       ),
       /* @__PURE__ */ e.h("span", { className: "truncate", style: { flex: 1 } }, t.name),
       /* @__PURE__ */ e.h(C, { value: t.health })
-    ), l && t.children.map((h) => /* @__PURE__ */ e.h(B, { key: h.slug, node: h, depth: r + 1, selected: a, onSelect: d })));
+    ), l && t.children.map((h) => /* @__PURE__ */ e.h(I, { key: h.slug, node: h, depth: n + 1, selected: a, onSelect: d })));
   }
-  function O({ slug: t, onBusy: r }) {
-    const [a, d] = p(null), [l, n] = p(null), [i, h] = p({}), [w, k] = p(null), [g, N] = p(!1), y = z(() => {
-      n(null), _(`/component-tests${t ? `?component_slug=${encodeURIComponent(t)}` : ""}`).then(d).catch((c) => n(c.message));
+  function q({ slug: t, onBusy: n }) {
+    const [a, d] = p(null), [l, r] = p(null), [i, h] = p({}), [S, b] = p(null), [g, T] = p(!1), y = R(() => {
+      r(null), k(`/component-tests${t ? `?component_slug=${encodeURIComponent(t)}` : ""}`).then(d).catch((c) => r(c.message));
     }, [t]);
-    S(y, [y]);
-    const T = async (c) => {
-      h((b) => ({ ...b, [c]: !0 })), k(null);
+    _(y, [y]);
+    const z = async (c) => {
+      h((x) => ({ ...x, [c]: !0 })), b({ file_path: c, status: "running", output: "starting…" });
       try {
-        const b = await M("/testcases/run", { file_path: c });
-        k(b), y();
-      } catch (b) {
-        k({
+        const x = await B("/testcases/run", { file_path: c });
+        for (; ; ) {
+          const N = await k(`/testcases/jobs/${x.id}`);
+          if (N.status === "done") {
+            b(N.error ? { file_path: c, status: "unknown", output: N.error } : N.result), y();
+            break;
+          }
+          b({
+            file_path: c,
+            status: "running",
+            output: N.status === "queued" ? "queued — another test is running" : "running…"
+          }), await new Promise((U) => setTimeout(U, 1500));
+        }
+      } catch (x) {
+        b({
           file_path: c,
           status: "unknown",
-          output: `Could not read the result back (${b.message}). The run may still be going server-side — its recorded status will appear on refresh.`
+          output: `Lost track of the run (${x.message}). It may still be going server-side — its recorded status will appear on refresh.`
         });
       } finally {
-        h((b) => ({ ...b, [c]: !1 }));
+        h((x) => ({ ...x, [c]: !1 }));
       }
     }, u = async () => {
-      r(!0);
+      n(!0);
       try {
-        await M("/discovery/run"), y();
+        await B("/discovery/run"), y();
       } catch (c) {
-        n(c.message);
+        r(c.message);
       } finally {
-        r(!1);
+        n(!1);
       }
-    }, f = R(
+    }, f = L(
       () => (a || []).filter((c) => !g || c.is_flaky),
       [a, g]
     );
@@ -192,12 +204,12 @@ function J(e) {
           gap: 5
         }
       },
-      /* @__PURE__ */ e.h(v, { d: x.refresh, size: 11 }),
+      /* @__PURE__ */ e.h(v, { d: w.refresh, size: 11 }),
       " Rescan discovery"
     ), /* @__PURE__ */ e.h(
       "button",
       {
-        onClick: () => N(!g),
+        onClick: () => T(!g),
         style: {
           ...o.btn,
           color: g ? "#fbbf24" : "var(--color-text-muted)",
@@ -206,12 +218,12 @@ function J(e) {
           gap: 5
         }
       },
-      /* @__PURE__ */ e.h(v, { d: x.flag, size: 11 }),
+      /* @__PURE__ */ e.h(v, { d: w.flag, size: 11 }),
       " Flaky only"
     ), /* @__PURE__ */ e.h("span", { style: { marginLeft: "auto", fontSize: s.label, color: "var(--color-text-muted)" } }, f.length, " test", f.length === 1 ? "" : "s")), /* @__PURE__ */ e.h("div", { className: "overflow-auto min-h-0 flex-1" }, /* @__PURE__ */ e.h("table", { style: { width: "100%", borderCollapse: "collapse", tableLayout: "fixed" } }, /* @__PURE__ */ e.h("thead", null, /* @__PURE__ */ e.h("tr", null, /* @__PURE__ */ e.h("th", { style: { ...o.th, width: 26 } }), /* @__PURE__ */ e.h("th", { style: o.th }, "Test file"), /* @__PURE__ */ e.h("th", { style: { ...o.th, width: 78 } }, "Kind"), /* @__PURE__ */ e.h("th", { style: { ...o.th, width: 120 } }, "Component"), /* @__PURE__ */ e.h("th", { style: { ...o.th, width: 84 } }, "Last run"))), /* @__PURE__ */ e.h("tbody", null, f.map((c) => /* @__PURE__ */ e.h("tr", { key: c.file_path }, /* @__PURE__ */ e.h("td", { style: o.td }, /* @__PURE__ */ e.h(
       "button",
       {
-        onClick: () => T(c.file_path),
+        onClick: () => z(c.file_path),
         disabled: i[c.file_path],
         title: "Run this test",
         style: {
@@ -241,7 +253,7 @@ function J(e) {
       c.is_flaky && /* @__PURE__ */ e.h(
         v,
         {
-          d: x.flag,
+          d: w.flag,
           size: 10,
           color: "#fbbf24",
           style: { marginLeft: 5, verticalAlign: "-1px" }
@@ -264,14 +276,14 @@ function J(e) {
         title: c.component_slug || ""
       },
       c.component_slug || "—"
-    ), /* @__PURE__ */ e.h("td", { style: { ...o.td, whiteSpace: "nowrap" } }, /* @__PURE__ */ e.h(C, { value: c.last_run_status })))))), f.length === 0 && /* @__PURE__ */ e.h(m, null, g ? "No tests flagged flaky." : "No tests here yet. Set a component’s test_base_path, then Rescan discovery.")), w && /* @__PURE__ */ e.h("div", { className: "shrink-0", style: {
+    ), /* @__PURE__ */ e.h("td", { style: { ...o.td, whiteSpace: "nowrap" } }, /* @__PURE__ */ e.h(C, { value: c.last_run_status })))))), f.length === 0 && /* @__PURE__ */ e.h(m, null, g ? "No tests flagged flaky." : "No tests here yet. Set a component’s test_base_path, then Rescan discovery.")), S && /* @__PURE__ */ e.h("div", { className: "shrink-0", style: {
       marginTop: 8,
       paddingTop: 8,
       borderTop: "1px solid var(--color-border)"
-    } }, /* @__PURE__ */ e.h("div", { className: "flex items-center gap-2", style: { marginBottom: 4 } }, /* @__PURE__ */ e.h(C, { value: w.status }), /* @__PURE__ */ e.h("span", { style: { ...o.mono, color: "var(--color-text-muted)" } }, w.file_path), /* @__PURE__ */ e.h(
+    } }, /* @__PURE__ */ e.h("div", { className: "flex items-center gap-2", style: { marginBottom: 4 } }, /* @__PURE__ */ e.h(C, { value: S.status }), /* @__PURE__ */ e.h("span", { style: { ...o.mono, color: "var(--color-text-muted)" } }, S.file_path), /* @__PURE__ */ e.h(
       "button",
       {
-        onClick: () => k(null),
+        onClick: () => b(null),
         style: {
           marginLeft: "auto",
           background: "none",
@@ -282,7 +294,7 @@ function J(e) {
           cursor: "pointer"
         }
       },
-      /* @__PURE__ */ e.h(v, { d: x.close, size: 11 })
+      /* @__PURE__ */ e.h(v, { d: w.close, size: 11 })
     )), /* @__PURE__ */ e.h("pre", { style: {
       fontSize: s.label,
       lineHeight: 1.45,
@@ -292,29 +304,29 @@ function J(e) {
       margin: 0,
       color: "var(--color-text-muted)",
       fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace"
-    } }, w.output))) : /* @__PURE__ */ e.h(m, null, "Loading…");
+    } }, S.output))) : /* @__PURE__ */ e.h(m, null, "Loading…");
   }
   function D({ slug: t }) {
-    const [r, a] = p(null), [d, l] = p(null);
-    return S(() => {
+    const [n, a] = p(null), [d, l] = p(null);
+    return _(() => {
       if (!t) {
         a([]);
         return;
       }
-      a(null), l(null), _(`/components/${encodeURIComponent(t)}/requirements`).then(a).catch((n) => l(n.message));
-    }, [t]), t ? d ? /* @__PURE__ */ e.h(m, null, "Couldn’t load requirements — ", d) : r ? r.length === 0 ? /* @__PURE__ */ e.h(m, null, "No requirements documented for this component.") : /* @__PURE__ */ e.h("div", { className: "overflow-auto h-full" }, r.map((n) => /* @__PURE__ */ e.h("div", { key: n.id, style: {
+      a(null), l(null), k(`/components/${encodeURIComponent(t)}/requirements`).then(a).catch((r) => l(r.message));
+    }, [t]), t ? d ? /* @__PURE__ */ e.h(m, null, "Couldn’t load requirements — ", d) : n ? n.length === 0 ? /* @__PURE__ */ e.h(m, null, "No requirements documented for this component.") : /* @__PURE__ */ e.h("div", { className: "overflow-auto h-full" }, n.map((r) => /* @__PURE__ */ e.h("div", { key: r.id, style: {
       border: "1px solid var(--color-border)",
       borderRadius: 8,
       padding: 10,
       marginBottom: 8
-    } }, /* @__PURE__ */ e.h("div", { className: "flex items-start gap-2", style: { marginBottom: 6 } }, /* @__PURE__ */ e.h("span", { style: { fontSize: s.tab, flex: 1, color: "var(--color-text-primary)" } }, n.title), /* @__PURE__ */ e.h(C, { value: n.health })), /* @__PURE__ */ e.h("div", { style: { fontSize: s.row, lineHeight: 1.65, color: "var(--color-text-muted)" } }, /* @__PURE__ */ e.h("div", null, /* @__PURE__ */ e.h("b", { style: { color: "var(--color-text-primary)" } }, "Given"), " ", n.gherkin_given), /* @__PURE__ */ e.h("div", null, /* @__PURE__ */ e.h("b", { style: { color: "var(--color-text-primary)" } }, "When"), " ", n.gherkin_when), /* @__PURE__ */ e.h("div", null, /* @__PURE__ */ e.h("b", { style: { color: "var(--color-text-primary)" } }, "Then"), " ", n.gherkin_then)), /* @__PURE__ */ e.h("div", { className: "flex items-center gap-2", style: {
+    } }, /* @__PURE__ */ e.h("div", { className: "flex items-start gap-2", style: { marginBottom: 6 } }, /* @__PURE__ */ e.h("span", { style: { fontSize: s.tab, flex: 1, color: "var(--color-text-primary)" } }, r.title), /* @__PURE__ */ e.h(C, { value: r.health })), /* @__PURE__ */ e.h("div", { style: { fontSize: s.row, lineHeight: 1.65, color: "var(--color-text-muted)" } }, /* @__PURE__ */ e.h("div", null, /* @__PURE__ */ e.h("b", { style: { color: "var(--color-text-primary)" } }, "Given"), " ", r.gherkin_given), /* @__PURE__ */ e.h("div", null, /* @__PURE__ */ e.h("b", { style: { color: "var(--color-text-primary)" } }, "When"), " ", r.gherkin_when), /* @__PURE__ */ e.h("div", null, /* @__PURE__ */ e.h("b", { style: { color: "var(--color-text-primary)" } }, "Then"), " ", r.gherkin_then)), /* @__PURE__ */ e.h("div", { className: "flex items-center gap-2", style: {
       marginTop: 8,
       fontSize: s.label,
       color: "var(--color-text-muted)"
-    } }, /* @__PURE__ */ e.h("span", null, "intended: ", /* @__PURE__ */ e.h("code", { style: o.mono }, n.intended_status)), n.kanban_url ? /* @__PURE__ */ e.h(
+    } }, /* @__PURE__ */ e.h("span", null, "intended: ", /* @__PURE__ */ e.h("code", { style: o.mono }, r.intended_status)), r.kanban_url ? /* @__PURE__ */ e.h(
       "a",
       {
-        href: n.kanban_url,
+        href: r.kanban_url,
         target: "_blank",
         rel: "noreferrer",
         style: { color: "var(--color-accent)" }
@@ -323,23 +335,23 @@ function J(e) {
     ) : /* @__PURE__ */ e.h("span", { style: { color: "#fbbf24" } }, "no Kanban card linked"))))) : /* @__PURE__ */ e.h(m, null, "Loading…") : /* @__PURE__ */ e.h(m, null, "Select a component to see its requirements.");
   }
   function E({ slug: t }) {
-    const [r, a] = p(null), [d, l] = p(null);
-    return S(() => {
-      a(null), l(null), _(`/debt${t ? `?component_slug=${encodeURIComponent(t)}` : ""}`).then(a).catch((n) => l(n.message));
-    }, [t]), d ? /* @__PURE__ */ e.h(m, null, "Couldn’t load debt notes — ", d) : r ? r.length === 0 ? /* @__PURE__ */ e.h(m, null, "No open technical-debt notes.") : /* @__PURE__ */ e.h("div", { className: "overflow-auto h-full" }, /* @__PURE__ */ e.h("table", { style: { width: "100%", borderCollapse: "collapse" } }, /* @__PURE__ */ e.h("thead", null, /* @__PURE__ */ e.h("tr", null, /* @__PURE__ */ e.h("th", { style: o.th }, "Noted"), /* @__PURE__ */ e.h("th", { style: o.th }, "Component"), /* @__PURE__ */ e.h("th", { style: o.th }, "Description"))), /* @__PURE__ */ e.h("tbody", null, r.map((n) => /* @__PURE__ */ e.h("tr", { key: n.id }, /* @__PURE__ */ e.h("td", { style: { ...o.td, color: "var(--color-text-muted)", whiteSpace: "nowrap" } }, (n.noted_at || "").slice(0, 10)), /* @__PURE__ */ e.h("td", { style: { ...o.td, color: "var(--color-text-muted)" } }, n.component_slug || "—"), /* @__PURE__ */ e.h("td", { style: { ...o.td, color: "var(--color-text-primary)" } }, n.description)))))) : /* @__PURE__ */ e.h(m, null, "Loading…");
+    const [n, a] = p(null), [d, l] = p(null);
+    return _(() => {
+      a(null), l(null), k(`/debt${t ? `?component_slug=${encodeURIComponent(t)}` : ""}`).then(a).catch((r) => l(r.message));
+    }, [t]), d ? /* @__PURE__ */ e.h(m, null, "Couldn’t load debt notes — ", d) : n ? n.length === 0 ? /* @__PURE__ */ e.h(m, null, "No open technical-debt notes.") : /* @__PURE__ */ e.h("div", { className: "overflow-auto h-full" }, /* @__PURE__ */ e.h("table", { style: { width: "100%", borderCollapse: "collapse" } }, /* @__PURE__ */ e.h("thead", null, /* @__PURE__ */ e.h("tr", null, /* @__PURE__ */ e.h("th", { style: o.th }, "Noted"), /* @__PURE__ */ e.h("th", { style: o.th }, "Component"), /* @__PURE__ */ e.h("th", { style: o.th }, "Description"))), /* @__PURE__ */ e.h("tbody", null, n.map((r) => /* @__PURE__ */ e.h("tr", { key: r.id }, /* @__PURE__ */ e.h("td", { style: { ...o.td, color: "var(--color-text-muted)", whiteSpace: "nowrap" } }, (r.noted_at || "").slice(0, 10)), /* @__PURE__ */ e.h("td", { style: { ...o.td, color: "var(--color-text-muted)" } }, r.component_slug || "—"), /* @__PURE__ */ e.h("td", { style: { ...o.td, color: "var(--color-text-primary)" } }, r.description)))))) : /* @__PURE__ */ e.h(m, null, "Loading…");
   }
   function W({ slug: t }) {
-    const [r, a] = p(null), [d, l] = p(null);
-    if (S(() => {
+    const [n, a] = p(null), [d, l] = p(null);
+    if (_(() => {
       if (!t) {
         a(null);
         return;
       }
-      a(null), l(null), _(`/components/${encodeURIComponent(t)}`).then(a).catch((i) => l(i.message));
+      a(null), l(null), k(`/components/${encodeURIComponent(t)}`).then(a).catch((i) => l(i.message));
     }, [t]), !t) return /* @__PURE__ */ e.h(m, null, "Select a component.");
     if (d) return /* @__PURE__ */ e.h(m, null, "Couldn’t load component — ", d);
-    if (!r) return /* @__PURE__ */ e.h(m, null, "Loading…");
-    const n = ({ k: i, v: h }) => /* @__PURE__ */ e.h("div", { className: "flex gap-3", style: {
+    if (!n) return /* @__PURE__ */ e.h(m, null, "Loading…");
+    const r = ({ k: i, v: h }) => /* @__PURE__ */ e.h("div", { className: "flex gap-3", style: {
       padding: "4px 0",
       borderBottom: "1px solid var(--color-border)"
     } }, /* @__PURE__ */ e.h("span", { style: {
@@ -349,23 +361,23 @@ function J(e) {
       color: "var(--color-text-muted)",
       paddingTop: 2
     } }, i), /* @__PURE__ */ e.h("span", { style: { fontSize: s.row, color: "var(--color-text-primary)" } }, h));
-    return /* @__PURE__ */ e.h("div", { className: "overflow-auto h-full" }, /* @__PURE__ */ e.h("div", { className: "flex items-center gap-2", style: { marginBottom: 10 } }, /* @__PURE__ */ e.h("span", { style: { fontSize: s.title, color: "var(--color-text-primary)" } }, r.name), /* @__PURE__ */ e.h(C, { value: r.health })), /* @__PURE__ */ e.h(n, { k: "slug", v: /* @__PURE__ */ e.h("code", { style: o.mono }, r.slug) }), /* @__PURE__ */ e.h(n, { k: "repo", v: r.repo || "—" }), /* @__PURE__ */ e.h(n, { k: "layer", v: r.layer || "—" }), /* @__PURE__ */ e.h(n, { k: "technologies", v: (r.technologies || []).join(", ") || "—" }), /* @__PURE__ */ e.h(n, { k: "test_base_path", v: /* @__PURE__ */ e.h("code", { style: o.mono }, r.test_base_path || "—") }), /* @__PURE__ */ e.h(n, { k: "run_cmd", v: /* @__PURE__ */ e.h("code", { style: o.mono }, r.run_cmd || "—") }), /* @__PURE__ */ e.h(n, { k: "test_cmd", v: /* @__PURE__ */ e.h("code", { style: o.mono }, r.test_cmd || "—") }), r.description && /* @__PURE__ */ e.h("p", { style: {
+    return /* @__PURE__ */ e.h("div", { className: "overflow-auto h-full" }, /* @__PURE__ */ e.h("div", { className: "flex items-center gap-2", style: { marginBottom: 10 } }, /* @__PURE__ */ e.h("span", { style: { fontSize: s.title, color: "var(--color-text-primary)" } }, n.name), /* @__PURE__ */ e.h(C, { value: n.health })), /* @__PURE__ */ e.h(r, { k: "slug", v: /* @__PURE__ */ e.h("code", { style: o.mono }, n.slug) }), /* @__PURE__ */ e.h(r, { k: "repo", v: n.repo || "—" }), /* @__PURE__ */ e.h(r, { k: "layer", v: n.layer || "—" }), /* @__PURE__ */ e.h(r, { k: "technologies", v: (n.technologies || []).join(", ") || "—" }), /* @__PURE__ */ e.h(r, { k: "test_base_path", v: /* @__PURE__ */ e.h("code", { style: o.mono }, n.test_base_path || "—") }), /* @__PURE__ */ e.h(r, { k: "run_cmd", v: /* @__PURE__ */ e.h("code", { style: o.mono }, n.run_cmd || "—") }), /* @__PURE__ */ e.h(r, { k: "test_cmd", v: /* @__PURE__ */ e.h("code", { style: o.mono }, n.test_cmd || "—") }), n.description && /* @__PURE__ */ e.h("p", { style: {
       marginTop: 12,
       fontSize: s.row,
       lineHeight: 1.6,
       color: "var(--color-text-muted)",
       whiteSpace: "pre-wrap"
-    } }, r.description), /* @__PURE__ */ e.h("div", { style: { marginTop: 14 } }, /* @__PURE__ */ e.h("div", { style: { ...o.label, color: "var(--color-text-muted)", marginBottom: 4 } }, "Connections"), (r.connections || []).length === 0 ? /* @__PURE__ */ e.h("div", { style: { fontSize: s.row, color: "var(--color-text-muted)" } }, "none") : (r.connections || []).map((i) => /* @__PURE__ */ e.h("div", { key: i.id, style: { fontSize: s.row, color: "var(--color-text-primary)" } }, /* @__PURE__ */ e.h("code", { style: { ...o.mono, color: "var(--color-accent)" } }, i.kind), /* @__PURE__ */ e.h(v, { d: x.arrow, size: 11, style: { margin: "0 4px", verticalAlign: "-2px" } }), i.to_slug, i.description ? /* @__PURE__ */ e.h("span", { style: { color: "var(--color-text-muted)" } }, " — ", i.description) : null))), /* @__PURE__ */ e.h("div", { style: { marginTop: 12 } }, /* @__PURE__ */ e.h("div", { style: { ...o.label, color: "var(--color-text-muted)", marginBottom: 4 } }, "MCP tools"), (r.tools || []).length === 0 ? /* @__PURE__ */ e.h("div", { style: { fontSize: s.row, color: "var(--color-text-muted)" } }, "none exposed") : (r.tools || []).map((i) => /* @__PURE__ */ e.h("div", { key: i.id, style: { ...o.mono, color: "var(--color-text-primary)" } }, i.name))));
+    } }, n.description), /* @__PURE__ */ e.h("div", { style: { marginTop: 14 } }, /* @__PURE__ */ e.h("div", { style: { ...o.label, color: "var(--color-text-muted)", marginBottom: 4 } }, "Connections"), (n.connections || []).length === 0 ? /* @__PURE__ */ e.h("div", { style: { fontSize: s.row, color: "var(--color-text-muted)" } }, "none") : (n.connections || []).map((i) => /* @__PURE__ */ e.h("div", { key: i.id, style: { fontSize: s.row, color: "var(--color-text-primary)" } }, /* @__PURE__ */ e.h("code", { style: { ...o.mono, color: "var(--color-accent)" } }, i.kind), /* @__PURE__ */ e.h(v, { d: w.arrow, size: 11, style: { margin: "0 4px", verticalAlign: "-2px" } }), i.to_slug, i.description ? /* @__PURE__ */ e.h("span", { style: { color: "var(--color-text-muted)" } }, " — ", i.description) : null))), /* @__PURE__ */ e.h("div", { style: { marginTop: 12 } }, /* @__PURE__ */ e.h("div", { style: { ...o.label, color: "var(--color-text-muted)", marginBottom: 4 } }, "MCP tools"), (n.tools || []).length === 0 ? /* @__PURE__ */ e.h("div", { style: { fontSize: s.row, color: "var(--color-text-muted)" } }, "none exposed") : (n.tools || []).map((i) => /* @__PURE__ */ e.h("div", { key: i.id, style: { ...o.mono, color: "var(--color-text-primary)" } }, i.name))));
   }
   function $() {
-    const [t, r] = p(null), [a, d] = p(null), [l, n] = p(null), [i, h] = p("tests"), [w, k] = p(!1), [g, N] = p(""), y = z(() => {
-      d(null), _("/components").then(r).catch((u) => d(u.message));
+    const [t, n] = p(null), [a, d] = p(null), [l, r] = p(null), [i, h] = p("tests"), [S, b] = p(!1), [g, T] = p(""), y = R(() => {
+      d(null), k("/components").then(n).catch((u) => d(u.message));
     }, []);
-    S(y, [y]);
-    const T = R(() => {
+    _(y, [y]);
+    const z = L(() => {
       if (!t) return [];
       const u = g.trim().toLowerCase();
-      return u ? t.filter((f) => f.slug.toLowerCase().includes(u) || f.name.toLowerCase().includes(u)).map((f) => ({ ...f, children: [] })).sort((f, c) => f.name.localeCompare(c.name)) : H(t);
+      return u ? t.filter((f) => f.slug.toLowerCase().includes(u) || f.name.toLowerCase().includes(u)).map((f) => ({ ...f, children: [] })).sort((f, c) => f.name.localeCompare(c.name)) : O(t);
     }, [t, g]);
     return /* @__PURE__ */ e.h("div", { className: "flex h-full min-h-0", style: { color: "var(--color-text-primary)" } }, /* @__PURE__ */ e.h("div", { className: "flex flex-col min-h-0", style: {
       width: 240,
@@ -375,7 +387,7 @@ function J(e) {
       "input",
       {
         value: g,
-        onChange: (u) => N(u.target.value),
+        onChange: (u) => T(u.target.value),
         placeholder: "Filter components…",
         style: {
           width: "100%",
@@ -388,10 +400,10 @@ function J(e) {
           color: "var(--color-text-primary)"
         }
       }
-    )), /* @__PURE__ */ e.h("div", { className: "overflow-auto flex-1 min-h-0", style: { padding: "0 6px 8px" } }, a && /* @__PURE__ */ e.h(m, null, "Couldn’t load — ", a), !t && !a && /* @__PURE__ */ e.h(m, null, "Loading…"), t && t.length === 0 && /* @__PURE__ */ e.h(m, null, "No components registered yet — the catalog is curated through the architecture MCP tools."), T.map((u) => /* @__PURE__ */ e.h(B, { key: u.slug, node: u, depth: 0, selected: l, onSelect: n })))), /* @__PURE__ */ e.h("div", { className: "flex flex-col min-w-0 min-h-0", style: { flex: 1 } }, /* @__PURE__ */ e.h("div", { className: "flex items-center shrink-0", style: {
+    )), /* @__PURE__ */ e.h("div", { className: "overflow-auto flex-1 min-h-0", style: { padding: "0 6px 8px" } }, a && /* @__PURE__ */ e.h(m, null, "Couldn’t load — ", a), !t && !a && /* @__PURE__ */ e.h(m, null, "Loading…"), t && t.length === 0 && /* @__PURE__ */ e.h(m, null, "No components registered yet — the catalog is curated through the architecture MCP tools."), z.map((u) => /* @__PURE__ */ e.h(I, { key: u.slug, node: u, depth: 0, selected: l, onSelect: r })))), /* @__PURE__ */ e.h("div", { className: "flex flex-col min-w-0 min-h-0", style: { flex: 1 } }, /* @__PURE__ */ e.h("div", { className: "flex items-center shrink-0", style: {
       padding: "0 8px",
       borderBottom: "1px solid var(--color-border)"
-    } }, U.map((u) => /* @__PURE__ */ e.h(
+    } }, K.map((u) => /* @__PURE__ */ e.h(
       "button",
       {
         key: u.id,
@@ -413,11 +425,11 @@ function J(e) {
       paddingRight: 4,
       fontSize: s.label,
       color: "var(--color-text-muted)"
-    } }, w ? "scanning…" : l || "all components")), /* @__PURE__ */ e.h("div", { className: "flex-1 min-h-0", style: { padding: 10 } }, i === "tests" && /* @__PURE__ */ e.h(O, { slug: l, onBusy: (u) => {
-      k(u), u || y();
+    } }, S ? "scanning…" : l || "all components")), /* @__PURE__ */ e.h("div", { className: "flex-1 min-h-0", style: { padding: 10 } }, i === "tests" && /* @__PURE__ */ e.h(q, { slug: l, onBusy: (u) => {
+      b(u), u || y();
     } }), i === "requirements" && /* @__PURE__ */ e.h(D, { slug: l }), i === "debt" && /* @__PURE__ */ e.h(E, { slug: l }), i === "detail" && /* @__PURE__ */ e.h(W, { slug: l }))));
   }
-  function q() {
+  function j() {
     return /* @__PURE__ */ e.h(
       "svg",
       {
@@ -440,18 +452,18 @@ function J(e) {
       {
         onClick: () => {
           var t;
-          return (t = window.__awOpenAppWindow) == null ? void 0 : t.call(window, I, void 0, "Architecture");
+          return (t = window.__awOpenAppWindow) == null ? void 0 : t.call(window, A, void 0, "Architecture");
         },
         className: "w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white/[0.06] cursor-pointer text-left",
         title: "Components, requirements, test traceability"
       },
-      /* @__PURE__ */ e.h(q, null),
+      /* @__PURE__ */ e.h(j, null),
       /* @__PURE__ */ e.h("span", { style: { fontSize: s.nav, color: "var(--color-text-primary)" } }, "Architecture")
     );
   }
-  e.registerWindow(I, $), e.registerSlot("core.nav.workspace", F);
+  e.registerWindow(A, $), e.registerSlot("core.nav.workspace", F);
 }
 export {
-  J as default,
-  J as register
+  G as default,
+  G as register
 };

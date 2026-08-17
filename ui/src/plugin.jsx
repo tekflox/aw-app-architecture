@@ -61,6 +61,7 @@ const FS = {
 const HEALTH_COLOR = {
   implemented: '#4ade80',
   passing: '#4ade80',
+  running: '#58a6ff',
   partial: '#fbbf24',
   broken: '#f87171',
   fail: '#f87171',
@@ -228,21 +229,40 @@ export function register(host) {
 
     useEffect(load, [load]);
 
+    // Start the run, then poll the job. The request used to stay open for the
+    // whole suite, which the tunnel edge cuts at ~30s — a slow pass came back
+    // as "502 workspace offline" and there was no way to tell it from a dead
+    // workspace. Now the only long-lived thing is the poll, and each poll is
+    // a normal short request.
     const runOne = async (filePath) => {
       setRunning((r) => ({ ...r, [filePath]: true }));
-      setOutput(null);
+      setOutput({ file_path: filePath, status: 'running', output: 'starting…' });
       try {
-        const res = await postJson('/testcases/run', { file_path: filePath });
-        setOutput(res);
-        load();
+        const job = await postJson('/testcases/run', { file_path: filePath });
+        for (;;) {
+          const j = await getJson(`/testcases/jobs/${job.id}`);
+          if (j.status === 'done') {
+            setOutput(j.error
+              ? { file_path: filePath, status: 'unknown', output: j.error }
+              : j.result);
+            load();
+            break;
+          }
+          setOutput({
+            file_path: filePath, status: 'running',
+            output: j.status === 'queued'
+              ? 'queued — another test is running'
+              : 'running…',
+          });
+          await new Promise((r) => setTimeout(r, 1500));
+        }
       } catch (e) {
-        // The tunnel edge cuts at ~30s, so a slow suite fails the FETCH while
-        // the run completes server-side and records its status. Saying "test
-        // failed" here would be a lie about a test that may well have passed.
+        // A failed poll says nothing about the test: the run lives in the
+        // workspace either way, and its recorded status appears on refresh.
         setOutput({
           file_path: filePath, status: 'unknown',
-          output: `Could not read the result back (${e.message}). The run may still `
-                + `be going server-side — its recorded status will appear on refresh.`,
+          output: `Lost track of the run (${e.message}). It may still be going `
+                + `server-side — its recorded status will appear on refresh.`,
         });
       } finally {
         setRunning((r) => ({ ...r, [filePath]: false }));

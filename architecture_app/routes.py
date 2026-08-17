@@ -43,6 +43,7 @@ from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
 from . import discovery
+from . import jobs
 from . import md_export as md
 from . import mcp_tools
 from . import scan
@@ -54,6 +55,11 @@ log = logging.getLogger("aw_apps.architecture")
 
 class _RunTestcaseBody(BaseModel):
     file_path: str
+    #: Block until the run finishes. Off by default — see run_testcase_route.
+    #: The CLI sets it, because it talks over loopback with no edge timeout and
+    #: a script that has to poll for its own exit code is worse than one that
+    #: waits.
+    wait: bool = False
 
 
 def build_routes(config: dict | None = None) -> FastAPI:
@@ -124,6 +130,13 @@ def build_routes(config: dict | None = None) -> FastAPI:
         # result. The Tests view treats a failed fetch as "unknown, refresh
         # to see the recorded status" rather than as a test failure.
         timeout = int(config.get("testcase_timeout_seconds") or 300)
+        if not body.wait:
+            # Default. Returns a job id at once so the browser is never holding
+            # a request open across the tunnel's ~30s cut, and so a loop over a
+            # component's tests can't fork one pytest per file with nothing
+            # bounding it (jobs.MAX_CONCURRENT does).
+            return jobs.start(body.file_path,
+                              lambda fp: run_testcase(fp, timeout))
         try:
             return await run_in_threadpool(run_testcase, body.file_path, timeout)
         except ValueError as exc:
@@ -133,6 +146,19 @@ def build_routes(config: dict | None = None) -> FastAPI:
             # message, not a server fault; a 500 sends whoever hit it looking
             # for a crash that isn't there.
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/testcases/jobs/{job_id}")
+    async def get_run_job(job_id: str):
+        job = jobs.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail=f"no such run job {job_id!r}")
+        return job
+
+    @app.get("/testcases/jobs")
+    async def list_run_jobs():
+        # So a UI that lost its job id (a reload mid-run) finds the run again
+        # instead of starting a second one.
+        return jobs.snapshot()
 
     @app.post("/discovery/run")
     async def run_discovery_route():

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import re
 import sys
 
@@ -810,3 +811,85 @@ class TestComponentHealthRollsUp:
         broken = v.index("'broken'")
         implemented = v.index("bool_and(h.health = 'implemented')")
         assert broken < implemented
+
+
+class TestRunsDoNotHoldTheRequest:
+    """`POST /testcases/run` blocked until pytest finished. The tunnel edge
+    cuts at ~30s, so a slow pass came back to the browser as "502 workspace
+    offline" — indistinguishable from a dead workspace — while a Starlette
+    threadpool worker, shared with every other route in the workspace, sat
+    occupied for the whole run."""
+
+    def test_async_is_the_default(self):
+        source = open(os.path.join(REPO, "architecture_app", "routes.py")).read()
+        assert "wait: bool = False" in source
+        assert "if not body.wait:" in source
+        assert "jobs.start(" in source
+
+    def test_the_cli_still_blocks(self):
+        """Loopback has no edge timeout, and a script that must poll for its
+        own exit code is worse than one that waits."""
+        cli = open(os.path.join(REPO, "commands", "architecture.py")).read()
+        assert '"wait": True' in cli
+
+    def test_concurrency_is_bounded(self):
+        """run_component_tests loops over every test linked to a component. A
+        component with 77 of them would otherwise fork 77 pytest processes back
+        to back with nothing bounding it."""
+        from architecture_app import jobs
+        assert jobs.MAX_CONCURRENT >= 1
+        source = open(os.path.join(REPO, "architecture_app", "jobs.py")).read()
+        assert "_SEMAPHORE = threading.Semaphore(MAX_CONCURRENT)" in source
+        assert "with _SEMAPHORE:" in source
+
+    def test_the_job_id_comes_back_before_a_slot_is_taken(self):
+        """Acquiring the semaphore in the caller would make `start` block
+        exactly when both slots are busy — the one case the caller most needs
+        an id back."""
+        source = open(os.path.join(REPO, "architecture_app", "jobs.py")).read()
+        work = source[source.index("def _work()"):]
+        start = source[source.index("def start("):source.index("def _work()")]
+        assert "with _SEMAPHORE:" in work and "with _SEMAPHORE:" not in start
+
+    def test_finished_jobs_are_reaped(self):
+        """In-process dict in a process that runs for weeks."""
+        source = open(os.path.join(REPO, "architecture_app", "jobs.py")).read()
+        assert "_reap(now)" in source
+
+    def test_a_real_run_reports_through_a_job(self):
+        from architecture_app import jobs
+        import time
+        # The run is held open so "start returned before the work finished" is
+        # asserted rather than raced on: a trivial callable can complete between
+        # start() returning and the next line, which would make the assertion
+        # pass or fail on timing.
+        release = threading.Event()
+        def held(fp):
+            release.wait(10)
+            return {"file_path": fp, "status": "passing"}
+        job = jobs.start("x/y.py", held)
+        assert job["id"].startswith("run-")
+        assert job["status"] in ("queued", "running")
+        assert jobs.get(job["id"])["result"] is None
+        release.set()
+        for _ in range(50):
+            j = jobs.get(job["id"])
+            if j["status"] == "done":
+                break
+            time.sleep(0.05)
+        assert jobs.get(job["id"])["result"]["status"] == "passing"
+
+    def test_a_raising_run_becomes_an_error_not_a_lost_job(self):
+        from architecture_app import jobs
+        import time
+        def boom(_fp):
+            raise ValueError("no such testcase")
+        job = jobs.start("nope.py", boom)
+        for _ in range(50):
+            if jobs.get(job["id"])["status"] == "done":
+                break
+            time.sleep(0.05)
+        j = jobs.get(job["id"])
+        assert j["status"] == "done"
+        assert "no such testcase" in j["error"]
+        assert j["result"] is None
