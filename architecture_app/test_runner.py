@@ -55,6 +55,18 @@ def _component_command(testcase: dict, file_path: str) -> str | None:
     return f"{template} {file_path}"
 
 
+#: A ``run_command`` starting with this marks a testcase as deliberately not
+#: executed HERE, with the reason after the colon. It answers the question
+#: "what do I do with a real test this environment cannot run?" — the wrong
+#: answer, tried once, is to narrow the component's test_base_path until the
+#: row disappears. That deletes a real test from the catalog to make a
+#: dashboard green, destroys any curated run_command / is_flaky / requirement
+#: link on it, and makes the coverage number a lie.
+#:
+#: This keeps the row, keeps the reason visible, and survives every rescan
+#: because upsert_testcase never clobbers run_command.
+SKIP_PREFIX = "SKIP:"
+
 #: pytest exit codes that mean NO VERDICT WAS PRODUCED, as opposed to 1, which
 #: means tests ran and failed — the only one that is real signal about the code.
 #:
@@ -116,7 +128,17 @@ def run_testcase(file_path: str, timeout: int = 300) -> dict:
     """
     root = workspace_root()
     testcase = db.get_testcase_by_path(file_path) or {}
-    run_command = testcase.get("run_command") or _component_command(testcase, file_path)
+    explicit = (testcase.get("run_command") or "").strip()
+    if explicit.startswith(SKIP_PREFIX):
+        # Deliberately not run here. NOT recorded as a result: last_run_status
+        # is left exactly as it was, because "we chose not to run it" says
+        # nothing about whether it passes.
+        return {
+            "file_path": file_path, "status": "not_runnable",
+            "output": explicit[len(SKIP_PREFIX):].strip() or
+                      "marked not runnable in this environment",
+        }
+    run_command = explicit or _component_command(testcase, file_path)
 
     if not run_command and not file_path.endswith(".py"):
         return {

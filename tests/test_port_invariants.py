@@ -639,7 +639,7 @@ class TestTestCommandFallback:
 
     def test_explicit_run_command_still_wins(self):
         source = open(os.path.join(REPO, "architecture_app", "test_runner.py")).read()
-        assert 'testcase.get("run_command") or _component_command(' in source
+        assert "run_command = explicit or _component_command(" in source
 
 
 class TestDocsLiveWithTheirRepo:
@@ -746,3 +746,31 @@ class TestExitCodeClassification:
         source = open(os.path.join(REPO, "architecture_app", "store.py")).read()
         listing = source[source.index("def list_components("):source.index("def create_requirement(")]
         assert "Component.test_cmd" in listing
+
+
+class TestNotRunnableIsRecordedNotHidden:
+    """The wrong answer to "this environment can't run that test", tried once
+    on 2026-08-17: narrow the component's test_base_path until the row
+    disappears. That deletes a real test from the catalog to make a dashboard
+    green, throws away any curated run_command / is_flaky / requirement link on
+    it, and turns the coverage count into a lie. 48 rows went that way and had
+    to be restored.
+
+    `SKIP: <reason>` keeps the row, keeps the reason, and survives rescans
+    because upsert_testcase never clobbers run_command."""
+
+    def test_skip_prefix_yields_not_runnable(self):
+        from architecture_app import test_runner
+        assert test_runner.SKIP_PREFIX == "SKIP:"
+        source = open(os.path.join(REPO, "architecture_app", "test_runner.py")).read()
+        assert 'explicit.startswith(SKIP_PREFIX)' in source
+        assert '"status": "not_runnable"' in source
+
+    def test_a_skipped_test_does_not_overwrite_its_last_result(self):
+        """Choosing not to run something says nothing about whether it passes.
+        Recording `unknown` would erase a real verdict from when it last ran
+        somewhere that could."""
+        source = open(os.path.join(REPO, "architecture_app", "test_runner.py")).read()
+        skip_branch = source[source.index("if explicit.startswith(SKIP_PREFIX):"):
+                             source.index("run_command = explicit or")]
+        assert "update_testcase_result" not in skip_branch
