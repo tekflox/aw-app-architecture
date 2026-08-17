@@ -129,6 +129,12 @@
         ],
         "enabled": true
       }
+    ],
+    "doctor": [
+      {
+        "label": "Test dependencies",
+        "route": "/provision/check"
+      }
     ]
   },
   "config_schema": {
