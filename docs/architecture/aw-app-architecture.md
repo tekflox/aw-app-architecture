@@ -3,16 +3,16 @@ repo: architecture
 path: docs/architecture/aw-app-architecture.md
 source: generated
 edited: false
-checksum: sha256:10729381fcaf1ad224ea3a51fd040ad6a72d02e01cb9a9de6b6d8bdcc5f457cf
+checksum: sha256:01f2e1eef312c2c39c8e3150d591e7a5ce98166015761050312e41572aedfa69
 ---
-# Architecture (app)
+# Architecture
 
 - **repo**: aw-app-architecture
 - **layer**: app
 - **technologies**: python, react
 - **health** (derived): planned
 
-This app: the architecture namespace as a decoupled Tier-1 app.
+The Architecture namespace as a decoupled app: a structured catalog of components, BDD requirements, test traceability, bug history, technical debt, typed connections and exposed MCP tools — with health always DERIVED (a row can't claim "implemented" while a linked test fails or a bug is open). Merges the monolith's two disconnected surfaces (Settings > Architecture and Workspace > Tests) into one window, ships the ~41 MCP tools the catalog is managed through, and runs the test-discovery scan that keeps the traceability matrix populated without hand-registering every test file.
 
 ## Connections
 - `db` → **postgres** — app-owned tables in the workspace schema
