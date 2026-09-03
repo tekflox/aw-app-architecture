@@ -1334,3 +1334,144 @@ class TestUnclaimedIsNotCurated:
         scan_src = open(os.path.join(REPO, "architecture_app", "scan.py")).read()
         block = scan_src[scan_src.index("_unowned = {"):scan_src.index("curated = {")]
         assert "SCAN_PROVENANCE" in block and "UNCLAIMED_PROVENANCE" in block
+
+
+class TestAutoProvisioning:
+    """The hourly "scan then provision what's stale" sweep (Kanban
+    3d05bf3b-9510-812c-b9a4-d0ec29dc8453) — an install/update lifecycle hook
+    was rejected because `reconciler.install()` extracts into `apps/<slug>`
+    while provisioning reads `repos/<repo>` (provision.py:67), so a hook would
+    fire when there is often no checkout and no component row yet, and it
+    still wouldn't catch a `git pull` that edits a requirements file. A
+    staleness stamp plus a periodic sweep covers both cases.
+
+    `_run` (the subprocess layer) and `db.upsert_component` are faked
+    throughout — these tests are about the stamp/staleness bookkeeping around
+    `_provision_one`, not about pip or a real venv."""
+
+    def _fake_component(self, tmp_path, monkeypatch, *, files=("requirements-dev.txt",),
+                         content="pytest\n"):
+        """A component whose repo exists on disk and whose venv already looks
+        built (a `bin/python` file is present), so `_provision_one` skips the
+        (faked-out) `python -m venv` step and the target dir exists to write
+        the stamp into — exactly the steady-state case this sweep runs in."""
+        from architecture_app import provision as p
+
+        repo = tmp_path / "repos" / "some-repo"
+        repo.mkdir(parents=True, exist_ok=True)
+        for f in files:
+            (repo / f).write_text(content)
+        monkeypatch.setattr(p, "workspace_root", lambda: str(tmp_path))
+        monkeypatch.setattr(p, "_run", lambda cmd: (0, ""))
+
+        bindir = tmp_path / p.VENV_ROOT / "some-repo" / "bin"
+        bindir.mkdir(parents=True)
+        (bindir / "python").write_text("")
+
+        return {"slug": "some-repo", "repo": "some-repo", "name": "some-repo",
+                "requirement_files": list(files)}
+
+    def test_stamp_written_on_success(self, tmp_path, monkeypatch):
+        from architecture_app import provision as p
+
+        component = self._fake_component(tmp_path, monkeypatch)
+        monkeypatch.setattr(p.db, "upsert_component", lambda **kw: None)
+
+        result = p._provision_one(component, force=False)
+        assert result["ok"] is True
+
+        with open(p._stamp_path("some-repo")) as f:
+            data = json.load(f)
+        assert data["files"] == ["requirements-dev.txt"]
+        assert data["stamp"] == p._requirements_stamp(
+            "some-repo", ["requirements-dev.txt"])
+        assert data["provisioned_at"]
+
+    def test_only_stale_skips_a_fresh_component(self, tmp_path, monkeypatch):
+        from architecture_app import provision as p
+
+        component = self._fake_component(tmp_path, monkeypatch)
+        monkeypatch.setattr(p.db, "upsert_component", lambda **kw: None)
+        p._provision_one(component, force=False)  # provisions once, writes the stamp
+
+        monkeypatch.setattr(p, "_components_with_requirements", lambda: [component])
+        monkeypatch.setattr(p, "_interpreter_works", lambda slug: True)
+
+        result = p.provision(only_stale=True)
+        assert result == {"provisioned": [], "ok": True}
+
+    def test_a_changed_requirements_file_makes_it_stale(self, tmp_path, monkeypatch):
+        from architecture_app import provision as p
+
+        component = self._fake_component(tmp_path, monkeypatch)
+        monkeypatch.setattr(p.db, "upsert_component", lambda **kw: None)
+        monkeypatch.setattr(p, "_interpreter_works", lambda slug: True)
+        p._provision_one(component, force=False)
+        assert p.needs_provisioning(component) is False
+
+        (tmp_path / "repos" / "some-repo" / "requirements-dev.txt").write_text(
+            "pytest\nrequests\n")
+        assert p.needs_provisioning(component) is True
+
+    def test_check_reports_stale_and_folds_it_into_pending(self, tmp_path, monkeypatch):
+        from architecture_app import provision as p
+
+        component = self._fake_component(tmp_path, monkeypatch)
+        monkeypatch.setattr(p.db, "upsert_component", lambda **kw: None)
+        monkeypatch.setattr(p, "_interpreter_works", lambda slug: True)
+        monkeypatch.setattr(p.db, "list_components", lambda: [
+            {"slug": "some-repo", "repo": "some-repo", "name": "some-repo"}])
+        p._provision_one(component, force=False)
+
+        fresh = p.check()
+        row = fresh["components"][0]
+        assert row["stale"] is False
+        assert row["component"] not in fresh["pending"]
+        assert fresh["ok"] is True
+
+        (tmp_path / "repos" / "some-repo" / "requirements-dev.txt").write_text(
+            "pytest\nrequests\n")
+
+        stale = p.check()
+        row = stale["components"][0]
+        assert row["stale"] is True
+        assert row["component"] in stale["pending"]
+        assert stale["ok"] is False
+
+    def test_unmatched_slug_is_an_explicit_failure_not_a_silent_noop(self, tmp_path, monkeypatch):
+        """`all([])` is True, so filtering a slug out to an empty candidate
+        list used to return `ok: True` — an unmatched slug "succeeded" at
+        provisioning nothing, which is the exact shape of bug this sweep must
+        not repeat every hour."""
+        from architecture_app import provision as p
+
+        monkeypatch.setattr(p, "workspace_root", lambda: str(tmp_path))
+        monkeypatch.setattr(p.db, "list_components", lambda: [])
+
+        result = p.provision(slug="no-such-component")
+        assert result["ok"] is False
+        assert result["provisioned"] == []
+        assert "no-such-component" in result["error"]
+
+    def test_provision_leaves_a_scan_owned_component_still_scan_owned(self, tmp_path, monkeypatch):
+        """Regression for store.py:577-583: provision writing a test_cmd once
+        flipped 16 components out of `edited_by='scan'`, freezing their
+        description/layer/technologies for good. `_provision_one` must never
+        pass `edited_by`, so an omitted argument is a no-op on that column —
+        modeled here with a minimal fake store that honours the same _UNSET
+        contract as the real one (store.py's `upsert_component`), since a
+        real Postgres-backed upsert isn't available to this suite."""
+        from architecture_app import provision as p
+        from architecture_app import store
+
+        component = self._fake_component(tmp_path, monkeypatch)
+        rows = {"some-repo": {"edited_by": store.SCAN_PROVENANCE}}
+
+        def fake_upsert(*, slug, name, edited_by=store._UNSET, **kw):
+            if edited_by is not store._UNSET:
+                rows[slug]["edited_by"] = edited_by
+
+        monkeypatch.setattr(p.db, "upsert_component", fake_upsert)
+        p._provision_one(component, force=False)
+
+        assert rows["some-repo"]["edited_by"] == store.SCAN_PROVENANCE

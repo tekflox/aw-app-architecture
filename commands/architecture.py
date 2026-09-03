@@ -18,14 +18,16 @@ the task sat disabled. Going through the CLI (which goes through the API,
 which reaches the process holding the session) is what makes it actually run.
 
 Usage:
-    aw-workspace-cli architecture scan                # derive components from manifests
-    aw-workspace-cli architecture discover            # find test files per component
-    aw-workspace-cli architecture components          # list, with derived health
-    aw-workspace-cli architecture tests [<slug>]      # traceability rows
-    aw-workspace-cli architecture run <file_path>     # run one testcase
-    aw-workspace-cli architecture provision [<slug>]  # install declared test deps
-    aw-workspace-cli architecture provision --check   # report, install nothing
-    aw-workspace-cli architecture regenerate-docs     # rewrite docs/architecture/
+    aw-workspace-cli architecture scan                  # derive components from manifests
+    aw-workspace-cli architecture discover              # find test files per component
+    aw-workspace-cli architecture components            # list, with derived health
+    aw-workspace-cli architecture tests [<slug>]        # traceability rows
+    aw-workspace-cli architecture run <file_path>       # run one testcase
+    aw-workspace-cli architecture provision [<slug>]    # install declared test deps
+    aw-workspace-cli architecture provision --check     # report, install nothing
+    aw-workspace-cli architecture provision --if-stale  # only (re)install what changed
+    aw-workspace-cli architecture autoprovision         # scan, then provision --if-stale
+    aw-workspace-cli architecture regenerate-docs       # rewrite docs/architecture/
 """
 from __future__ import annotations
 
@@ -73,7 +75,7 @@ def run(args: list[str] | None = None) -> int:
         # "502 workspace offline" while the install carried on server-side, so
         # the CLI reported failure about something that was working. Start the
         # job, then poll; each poll is a normal short request.
-        payload = {"force": "--force" in rest}
+        payload = {"force": "--force" in rest, "only_stale": "--if-stale" in rest}
         slug = next((a for a in rest if not a.startswith("--")), None)
         if slug:
             payload["component"] = slug
@@ -100,6 +102,50 @@ def run(args: list[str] | None = None) -> int:
                 print(f"ok     {row['component']:28} {', '.join(row.get('files') or [])}")
             else:
                 print(f"FAILED {row['component']:28} {row.get('error','')[:200]}", file=sys.stderr)
+        if not body.get("ok") and body.get("error"):
+            # The unmatched-slug case: `provisioned` is empty, so without this
+            # the CLI prints nothing and just exits non-zero — a failure with
+            # no visible reason.
+            print(f"provision failed: {body['error']}", file=sys.stderr)
+        return 0 if body.get("ok") else 1
+
+    if sub == "autoprovision":
+        # scan, then provision what's stale — one command, one process, so a
+        # scheduled task doesn't depend on the runner supporting a shell "&&".
+        status, body = local_client.request("POST", f"{_BASE}/scan/run", {})
+        if status != 200:
+            print(f"scan failed: HTTP {status} {body}", file=sys.stderr)
+            return 1
+        print(f"scan: components {body.get('components')}  "
+              f"connections {body.get('connections')}  "
+              f"mcp tools {body.get('mcp_tools')}")
+
+        status, job = local_client.request(
+            "POST", f"{_BASE}/provision/run", {"only_stale": True})
+        if status != 200:
+            print(f"provision failed: HTTP {status} {job}", file=sys.stderr)
+            return 1
+        import time
+        print(f"provisioning ({job.get('id')}) — installing what's stale…")
+        while True:
+            status, j = local_client.request("GET", f"{_BASE}/testcases/jobs/{job['id']}")
+            if status != 200:
+                print(f"lost track of the job: HTTP {status} {j}", file=sys.stderr)
+                return 1
+            if j.get("status") == "done":
+                break
+            time.sleep(5)
+        if j.get("error"):
+            print(f"provision failed: {j['error']}", file=sys.stderr)
+            return 1
+        body = j.get("result") or {}
+        for row in body.get("provisioned", []):
+            if row.get("ok"):
+                print(f"ok     {row['component']:28} {', '.join(row.get('files') or [])}")
+            else:
+                print(f"FAILED {row['component']:28} {row.get('error','')[:200]}", file=sys.stderr)
+        if not body.get("provisioned"):
+            print("autoprovision: nothing stale, no-op")
         return 0 if body.get("ok") else 1
 
     if sub == "scan":

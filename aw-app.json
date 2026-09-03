@@ -128,6 +128,23 @@
           }
         ],
         "enabled": true
+      },
+      {
+        "name": "Architecture Test Provisioning",
+        "type": "agentic_output",
+        "command": "aw-workspace-cli architecture autoprovision",
+        "notify_exit_codes": [
+          1
+        ],
+        "agent_slug": "system-analyst",
+        "prompt": "`aw-workspace-cli architecture autoprovision` just exited non-zero. That command scans the workspace and then (re)installs the declared test dependencies for whichever components look stale \u2014 a failure here means a component's test venv could not be built or refreshed, so its suite cannot even collect: pytest never gets far enough to pass or fail, and the row sits at `unknown` looking like nothing was tried. Read the output above, name which component failed and why (a venv that could not be created, a pip install that failed or timed out, a declared requirements file that does not exist), and stop there. Do not change anything.",
+        "schedules": [
+          {
+            "kind": "cron",
+            "expr": "20 * * * *"
+          }
+        ],
+        "enabled": true
       }
     ],
     "doctor": [

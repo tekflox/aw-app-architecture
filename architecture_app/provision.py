@@ -26,14 +26,24 @@ component instead gets `.aw-workspace/test-venvs/<slug>/`, which is under
 ``AW_WORKSPACE_HOME`` and therefore host-mounted, so it survives container
 recreation; and `--check` can answer "what is missing" without installing
 anything at all.
+
+**Staleness is a hash of the requirements FILES, not of the resolved package
+set.** `_requirements_stamp` hashes what the repo declares, so an edited
+`requirements-dev.txt` is caught on the next sweep. An unpinned dependency
+whose upstream quietly released a new version is not: the file that names it
+hasn't changed, so nothing looks stale. Re-resolving every component's actual
+installed packages on every sweep is the cost this design avoids — "stale"
+here means "the declaration changed", not "the installed set is current".
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
 import sys
+from datetime import datetime, timezone
 from typing import Any
 
 from . import store as db
@@ -52,6 +62,10 @@ CONVENTIONAL = ("requirements-dev.txt", "requirements-test.txt")
 #: Per-component venvs live here. Under AW_WORKSPACE_HOME, which is
 #: host-mounted, so they outlive the container that built them.
 VENV_ROOT = os.path.join(".aw-workspace", "test-venvs")
+
+#: Written into a venv dir on a successful provision. Its presence plus a
+#: matching stamp is what lets a sweep skip a component that hasn't changed.
+STAMP_FILE = ".aw-provisioned.json"
 
 #: An interpreter liveness probe is a fork, not a build — keep it short so
 #: `--check` (and therefore `doctor`) stays fast enough to run casually.
@@ -92,6 +106,53 @@ def requirement_files(repo: str) -> list[str]:
         return declared
     return [name for name in CONVENTIONAL
             if os.path.isfile(os.path.join(root, name))]
+
+
+def _existing_files(repo: str, files: list[str]) -> list[str]:
+    """The subset of a repo's declared/conventional requirement files that
+    actually exist on disk — a declared-but-absent path is `check`'s job to
+    report, not something a stamp or a pip install can act on."""
+    root = _repo_dir(repo)
+    return [f for f in files if os.path.isfile(os.path.join(root, f))]
+
+
+def _requirements_stamp(repo: str, files: list[str]) -> str:
+    """sha256 over the concatenated contents of the resolved requirement
+    files, in the order given. This hashes what the repo DECLARES, not the
+    packages pip actually resolved — see the module docstring's limit."""
+    h = hashlib.sha256()
+    root = _repo_dir(repo)
+    for f in files:
+        with open(os.path.join(root, f), "rb") as fh:
+            h.update(fh.read())
+    return h.hexdigest()
+
+
+def _stamp_path(slug: str) -> str:
+    return os.path.join(venv_dir(slug), STAMP_FILE)
+
+
+def _stamp_matches(component: dict) -> bool:
+    """Does the on-disk stamp still match this component's requirement files?
+    False on anything short of an exact match — missing file, unreadable
+    JSON, or a differing hash — so a corrupt stamp reads as stale rather than
+    as satisfied."""
+    try:
+        with open(_stamp_path(component["slug"])) as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return False
+    files = _existing_files(component["repo"], component["requirement_files"])
+    return data.get("stamp") == _requirements_stamp(component["repo"], files)
+
+
+def needs_provisioning(component: dict) -> bool:
+    """True if this component's venv needs (re)building: the interpreter is
+    missing/dangling, or the declared requirement files no longer match what
+    was last provisioned."""
+    if not _interpreter_works(component["slug"]):
+        return True
+    return not _stamp_matches(component)
 
 
 def venv_dir(slug: str) -> str:
@@ -150,31 +211,52 @@ def check() -> dict[str, Any]:
         root = _repo_dir(repo)
         missing_files = [f for f in c["requirement_files"]
                          if not os.path.isfile(os.path.join(root, f))]
+        provisioned = _interpreter_works(slug)
+        # Only meaningful once provisioned — an unprovisioned component is
+        # already `pending` on that basis, and _stamp_matches would just
+        # report "no stamp file" for the same reason.
+        stale = provisioned and not _stamp_matches(c)
         rows.append({
             "component": slug,
             "repo": repo,
             "requirement_files": c["requirement_files"],
             "missing_requirement_files": missing_files,
             "venv": venv_dir(slug),
-            "provisioned": _interpreter_works(slug),
+            "provisioned": provisioned,
+            "stale": stale,
         })
-    pending = [r for r in rows if not r["provisioned"] or r["missing_requirement_files"]]
+    pending = [r for r in rows
+               if not r["provisioned"] or r["missing_requirement_files"] or r["stale"]]
     return {"components": rows, "pending": [r["component"] for r in pending],
             "ok": not pending}
 
 
-def provision(slug: str | None = None, *, force: bool = False) -> dict[str, Any]:
+def provision(slug: str | None = None, *, force: bool = False,
+              only_stale: bool = False) -> dict[str, Any]:
     """Build (or refresh) the per-component test venvs.
 
     Idempotent: an existing venv is reused and pip is asked to install again,
     which is a no-op when everything is already satisfied. `force` recreates
     from scratch, for the case a half-finished install left one wedged.
+    `only_stale` skips any component `needs_provisioning` says is already
+    fine — the sweep that runs unattended can't afford a pip resolution per
+    component every time it ticks.
+
+    A `slug` that matches no component is an explicit failure, not a silent
+    no-op: filtering everything out and then reporting `ok: True` because
+    `all([])` is true would let a caller passing a stale or misspelled slug
+    "succeed" at provisioning nothing, forever.
     """
-    results = []
-    for c in _components_with_requirements():
-        if slug and c["slug"] != slug:
-            continue
-        results.append(_provision_one(c, force=force))
+    candidates = _components_with_requirements()
+    if slug:
+        candidates = [c for c in candidates if c["slug"] == slug]
+        if not candidates:
+            return {"provisioned": [], "ok": False,
+                    "error": f"no component with test requirements matches "
+                             f"slug {slug!r}"}
+    if only_stale:
+        candidates = [c for c in candidates if needs_provisioning(c)]
+    results = [_provision_one(c, force=force) for c in candidates]
     return {"provisioned": results,
             "ok": all(r["ok"] for r in results) if results else True}
 
@@ -220,6 +302,16 @@ def _provision_one(component: dict, *, force: bool) -> dict[str, Any]:
     template = f"cd repos/{repo} && {python} -m pytest {{rel}}"
     db.upsert_component(slug=slug, name=component.get("name") or slug,
                         test_cmd=template)
+
+    # Recorded on success only — a failed install must keep looking stale on
+    # the next sweep, not be mistaken for one that's up to date.
+    with open(_stamp_path(slug), "w") as f:
+        json.dump({
+            "stamp": _requirements_stamp(repo, files),
+            "files": files,
+            "provisioned_at": datetime.now(timezone.utc).isoformat(),
+        }, f)
+
     return {"component": slug, "ok": True, "files": files, "test_cmd": template}
 
 

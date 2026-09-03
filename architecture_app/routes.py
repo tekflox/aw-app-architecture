@@ -185,9 +185,12 @@ def build_routes(config: dict | None = None) -> FastAPI:
         # job registry the test runs use rather than holding the request.
         body = body or {}
         slug, force = body.get("component"), bool(body.get("force"))
+        only_stale = bool(body.get("only_stale"))
         if not body.get("wait"):
-            return jobs.start(slug or "*", lambda _fp: prov.provision(slug, force=force))
-        return await run_in_threadpool(lambda: prov.provision(slug, force=force))
+            return jobs.start(slug or "*", lambda _fp: prov.provision(
+                slug, force=force, only_stale=only_stale))
+        return await run_in_threadpool(
+            lambda: prov.provision(slug, force=force, only_stale=only_stale))
 
     @app.post("/docs/regenerate")
     async def regenerate_docs():
