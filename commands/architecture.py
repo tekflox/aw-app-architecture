@@ -62,7 +62,12 @@ def run(args: list[str] | None = None) -> int:
                 print(f"provision check failed: HTTP {status} {body}", file=sys.stderr)
                 return 1
             for row in body.get("components", []):
-                state = "ok" if row["provisioned"] else "MISSING"
+                if not row["provisioned"]:
+                    state = "MISSING"
+                elif row.get("stale"):
+                    state = "STALE"
+                else:
+                    state = "ok"
                 bad = row.get("missing_requirement_files") or []
                 print(f"{state:8} {row['component']:28} {', '.join(row['requirement_files'])}"
                       + (f"   [declared but absent: {', '.join(bad)}]" if bad else ""))
