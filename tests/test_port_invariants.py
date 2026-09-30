@@ -1149,7 +1149,82 @@ class TestDependencyProvisioning:
         cli = open(os.path.join(REPO, "commands", "architecture.py")).read()
         block = cli[cli.index('if sub == "provision":'):cli.index('if sub == "scan":')]
         assert '"wait": True' not in block
-        assert "/testcases/jobs/" in block
+        # Both `provision` and `autoprovision` poll through _poll_job, which is
+        # where "/testcases/jobs/" now lives.
+        assert "_poll_job(local_client" in block
+        assert "/testcases/jobs/" in cli
+
+    def test_a_lost_provision_job_does_not_exit_1(self):
+        """Exit 1 is what the hourly "Architecture Test Provisioning" task
+        escalates to a full system-analyst agent. Losing track of a job says
+        nothing about whether a component is broken, and treating the two the
+        same burned ~1.56M input tokens in one 14h window re-diagnosing a
+        healthy workspace (Kanban 3eb5bf3b-9510-810a-a513-ec5628c2656f).
+
+        Driven rather than grepped: a fake client whose job poll always 404s,
+        with `provision --check` reporting everything fine, must not yield 1.
+        """
+        sys.path.insert(0, os.path.join(REPO, "commands"))
+        import architecture as cli_mod
+
+        calls = []
+
+        class _FakeClient:
+            @staticmethod
+            def request(method, path, body=None):
+                calls.append((method, path))
+                if "/testcases/jobs/" in path:
+                    return 404, {"detail": "no such run job 'run-abc'"}
+                if path.endswith("/provision/check"):
+                    return 200, {"components": [], "pending": [], "ok": True}
+                raise AssertionError(f"unexpected call {method} {path}")
+
+        monkeypatch_sleep = cli_mod._POLL_INTERVAL_S
+        try:
+            cli_mod._POLL_INTERVAL_S = 0
+            job, code = cli_mod._poll_job(_FakeClient, "run-abc")
+        finally:
+            cli_mod._POLL_INTERVAL_S = monkeypatch_sleep
+        assert job is None
+        assert code == cli_mod.EXIT_INCONCLUSIVE
+        assert code != 1, "a lost job must not look like a provisioning failure"
+        assert any(p.endswith("/provision/check") for _m, p in calls), (
+            "the exit code was decided without consulting provision --check")
+
+    def test_a_lost_provision_job_with_a_real_failure_still_exits_1(self):
+        """The other half: suppressing the false alarm must not suppress the
+        true one. A component genuinely unprovisioned still earns exit 1."""
+        sys.path.insert(0, os.path.join(REPO, "commands"))
+        import architecture as cli_mod
+
+        class _FakeClient:
+            @staticmethod
+            def request(method, path, body=None):
+                if "/testcases/jobs/" in path:
+                    return 404, {"detail": "no such run job 'run-abc'"}
+                if path.endswith("/provision/check"):
+                    return 200, {"components": [], "pending": ["aw-backend"],
+                                 "ok": False}
+                raise AssertionError(f"unexpected call {method} {path}")
+
+        previous = cli_mod._POLL_INTERVAL_S
+        try:
+            cli_mod._POLL_INTERVAL_S = 0
+            job, code = cli_mod._poll_job(_FakeClient, "run-abc")
+        finally:
+            cli_mod._POLL_INTERVAL_S = previous
+        assert job is None
+        assert code == 1
+
+    def test_the_seeded_task_only_escalates_the_genuine_failure_code(self):
+        """`notify_exit_codes` must stay [1] now that 3 means "lost the job,
+        nothing broken" — listing 3 (or dropping the list, which means "any
+        non-zero") puts the false alarm back on a full agent."""
+        manifest = json.load(open(os.path.join(REPO, "aw-app.json")))
+        tasks = {t["name"]: t for t in manifest["contributes"]["tasks"]}
+        task = tasks["Architecture Test Provisioning"]
+        assert task["notify_exit_codes"] == [1]
+        assert "autoprovision" in task["command"]
 
 
 class TestAppSlugIsNotBlindlyPrefixed:

@@ -28,6 +28,11 @@ Usage:
     aw-workspace-cli architecture provision --if-stale  # only (re)install what changed
     aw-workspace-cli architecture autoprovision         # scan, then provision --if-stale
     aw-workspace-cli architecture regenerate-docs       # rewrite docs/architecture/
+
+Exit codes for `provision` / `autoprovision`: 0 everything provisioned, 1 a
+component genuinely failed (the only code the seeded task escalates to an
+agent), 3 the job could not be followed to the end but `provision --check`
+reports nothing broken. See EXIT_INCONCLUSIVE.
 """
 from __future__ import annotations
 
@@ -39,10 +44,90 @@ DESCRIPTION = "Architecture namespace — components, tests, discovery, docs"
 
 _BASE = "/api/apps/architecture"
 
+#: Exit code for "the provision job could not be followed to the end, and
+#: nothing is actually broken". Deliberately NOT 1.
+#:
+#: 1 means "a component failed to provision", and that is the code the seeded
+#: hourly "Architecture Test Provisioning" task escalates to a full
+#: system-analyst agent. Conflating the two cost ~1.56M input tokens in one
+#: 14h window re-diagnosing lost jobs that had broken nothing, across at least
+#: ten rounds since 2026-09-07 (Kanban 3eb5bf3b-9510-810a-a513-ec5628c2656f).
+#: Keeping them apart is what makes a non-zero exit here worth an agent.
+EXIT_INCONCLUSIVE = 3
+
+_POLL_INTERVAL_S = 5
+
+#: A poll that cannot find the job is retried this many times before falling
+#: back to `provision --check`. The shared job registry closes the cross-worker
+#: gap that used to make the FIRST poll miss; a worker dying mid-run still lets
+#: its entry expire, and a couple of cheap retries cover the moment around that.
+_LOST_JOB_RETRIES = 3
+
+#: Ceiling on one provision poll loop. It used to be unbounded: a job whose
+#: owning worker died left the CLI — and the scheduled task behind it —
+#: spinning forever. A cold pip over 152 pinned packages is minutes, so this is
+#: generous rather than tight.
+_POLL_TIMEOUT_S = 40 * 60
+
 
 def _usage() -> int:
     print(__doc__.split("Usage:")[1].strip())
     return 2
+
+
+def _report_lost_job(local_client, job_id: str) -> int:
+    """Exit code for a job that could not be followed to completion.
+
+    The read-only `/provision/check` is the authority on whether anything is
+    actually broken, so ask it rather than guessing. The guess used to be
+    "exit 1" — see EXIT_INCONCLUSIVE for what that cost.
+    """
+    status, body = local_client.request("GET", f"{_BASE}/provision/check")
+    if status != 200:
+        print(f"lost track of job {job_id}, and provision --check is also "
+              f"unavailable (HTTP {status} {body}) — cannot tell whether any "
+              f"component is broken", file=sys.stderr)
+        return EXIT_INCONCLUSIVE
+    pending = body.get("pending") or []
+    if not pending:
+        print(f"lost track of job {job_id}, but provision --check reports every "
+              f"component provisioned and current — nothing to fix "
+              f"(exit {EXIT_INCONCLUSIVE}, not a provisioning failure)")
+        return EXIT_INCONCLUSIVE
+    print(f"lost track of job {job_id}; provision --check reports "
+          f"{len(pending)} component(s) not provisioned or stale: "
+          f"{', '.join(pending)}", file=sys.stderr)
+    return 1
+
+
+def _poll_job(local_client, job_id: str) -> tuple[dict | None, int]:
+    """Poll a provision job to completion.
+
+    Returns ``(job, 0)`` once the job finishes, or ``(None, code)`` when it
+    could not be followed — where ``code`` comes from `_report_lost_job`, not
+    from a bare assumption that a failed poll means a failed install.
+    """
+    import time
+    deadline = time.time() + _POLL_TIMEOUT_S
+    misses = 0
+    while True:
+        status, j = local_client.request("GET", f"{_BASE}/testcases/jobs/{job_id}")
+        if status == 200:
+            misses = 0
+            if j.get("status") == "done":
+                return j, 0
+        elif status == 404:
+            misses += 1
+            if misses > _LOST_JOB_RETRIES:
+                return None, _report_lost_job(local_client, job_id)
+        else:
+            print(f"polling job {job_id} failed: HTTP {status} {j}", file=sys.stderr)
+            return None, _report_lost_job(local_client, job_id)
+        if time.time() >= deadline:
+            print(f"gave up waiting for job {job_id} after "
+                  f"{_POLL_TIMEOUT_S // 60} minutes", file=sys.stderr)
+            return None, _report_lost_job(local_client, job_id)
+        time.sleep(_POLL_INTERVAL_S)
 
 
 def run(args: list[str] | None = None) -> int:
@@ -88,16 +173,10 @@ def run(args: list[str] | None = None) -> int:
         if status != 200:
             print(f"provision failed: HTTP {status} {job}", file=sys.stderr)
             return 1
-        import time
         print(f"provisioning ({job.get('id')}) — installing, this takes minutes…")
-        while True:
-            status, j = local_client.request("GET", f"{_BASE}/testcases/jobs/{job['id']}")
-            if status != 200:
-                print(f"lost track of the job: HTTP {status} {j}", file=sys.stderr)
-                return 1
-            if j.get("status") == "done":
-                break
-            time.sleep(5)
+        j, code = _poll_job(local_client, job["id"])
+        if j is None:
+            return code
         if j.get("error"):
             print(f"provision failed: {j['error']}", file=sys.stderr)
             return 1
@@ -130,16 +209,10 @@ def run(args: list[str] | None = None) -> int:
         if status != 200:
             print(f"provision failed: HTTP {status} {job}", file=sys.stderr)
             return 1
-        import time
         print(f"provisioning ({job.get('id')}) — installing what's stale…")
-        while True:
-            status, j = local_client.request("GET", f"{_BASE}/testcases/jobs/{job['id']}")
-            if status != 200:
-                print(f"lost track of the job: HTTP {status} {j}", file=sys.stderr)
-                return 1
-            if j.get("status") == "done":
-                break
-            time.sleep(5)
+        j, code = _poll_job(local_client, job["id"])
+        if j is None:
+            return code
         if j.get("error"):
             print(f"provision failed: {j['error']}", file=sys.stderr)
             return 1

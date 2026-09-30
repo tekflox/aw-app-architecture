@@ -150,7 +150,10 @@ def build_routes(config: dict | None = None) -> FastAPI:
 
     @app.get("/testcases/jobs/{job_id}")
     async def get_run_job(job_id: str):
-        job = jobs.get(job_id)
+        # Off the event loop: the lookup falls through to the shared registry
+        # when this worker isn't the one that started the job, which is a
+        # (loopback, sub-millisecond, but real) Redis round trip.
+        job = await run_in_threadpool(jobs.get, job_id)
         if job is None:
             raise HTTPException(status_code=404, detail=f"no such run job {job_id!r}")
         return job
@@ -158,8 +161,9 @@ def build_routes(config: dict | None = None) -> FastAPI:
     @app.get("/testcases/jobs")
     async def list_run_jobs():
         # So a UI that lost its job id (a reload mid-run) finds the run again
-        # instead of starting a second one.
-        return jobs.snapshot()
+        # instead of starting a second one — on any worker, not just the one
+        # that happened to serve the POST.
+        return await run_in_threadpool(jobs.snapshot)
 
     @app.post("/discovery/run")
     async def run_discovery_route():
