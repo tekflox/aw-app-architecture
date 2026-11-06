@@ -126,3 +126,7 @@ this (workspace v0.1.64). Before it existed, the `$AW_WORKSPACE_REPOS` and
 entire checkout tree without asking — and this app's reads were legal only
 because a Tier-1 app runs in-process, so nothing was there to stop them. The
 manifest is now a complete description of what this app touches.
+
+<!-- aw-app-* fleet CI/PR migration (Batch 6) — follow-up no-op PR proving the
+     comment (/aw-review) and workflow_run merge paths now that code-review.yml
+     exists on the default branch. Architecture app — CI/PR migration follow-up (Batch 6). -->
